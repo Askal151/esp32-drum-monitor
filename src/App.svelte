@@ -2,6 +2,7 @@
   import DrumPad       from './lib/DrumPad.svelte';
   import Waveform      from './lib/Waveform.svelte';
   import SerialMonitor from './lib/SerialMonitor.svelte';
+  import { playSnare, playKick, unlockAudio } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount, hitEvent,
     connect, disconnect, sendCmd
@@ -12,6 +13,7 @@
 
   let tab = 'drum';
   let lastError = '';
+  let audioEnabled = true;   // toggle audio on/off
   let hits = [0, 0];
   let bpm  = [0, 0];
   const hitTimes = [[], []];
@@ -34,10 +36,18 @@
     if (hitTimes[e.idx].length > 20) hitTimes[e.idx].shift();
     bpm[e.idx] = calcBpm(hitTimes[e.idx]);
     bpm = [...bpm];
+
+    // Main suara drum
+    if (audioEnabled) {
+      const vel = Math.max(0.15, Math.min(1.0, e.velocity / 100));
+      if (e.idx === 0) playSnare(vel);
+      else             playKick(vel);
+    }
   });
 
   async function toggleConn() {
     lastError = '';
+    unlockAudio();   // unlock AudioContext dengan user gesture
     if ($connected) { await disconnect(); }
     else { try { await connect(); } catch(e) { lastError = e.message; } }
   }
@@ -68,6 +78,14 @@
       {/if}
     </div>
     <div class="flex items-center gap-2">
+      <!-- Toggle audio -->
+      <button
+        class="text-xs px-3 py-1.5 rounded-md font-bold ring-1 transition-opacity
+          {audioEnabled ? 'bg-violet-950 text-violet-400 ring-violet-900' : 'bg-slate-800 text-slate-500 ring-slate-700'}"
+        on:click={() => { unlockAudio(); audioEnabled = !audioEnabled; }}
+        title="Toggle suara drum"
+      >{audioEnabled ? '🔊 Audio' : '🔇 Mute'}</button>
+
       {#if $connected}
         <button class="btn-gray" on:click={() => sendCmd('s')}>📋 Status</button>
         <button class="btn-gray" on:click={() => sendCmd('r')}>↺ Reset</button>
