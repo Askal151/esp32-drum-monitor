@@ -74,11 +74,12 @@
   // Mana-mana sensor kesan magnet (LED > 0) → sequencer mula
   // Semua sensor LED = 0 → sequencer berhenti
 
+  // Hanya Sensor 1 (idx=0) yang kawalan sequencer
   const unsubHit = sensors.subscribe(arr => {
     if (!sensorMode) return;
-    const anyActive = arr.some(s => s.led > 0);
-    if (anyActive && !playing) start();
-    else if (!anyActive && playing) stop();
+    const s1Active = arr[0]?.led > 0;
+    if (s1Active && !playing) start();
+    else if (!s1Active && playing) stop();
   });
 
   // Load preset

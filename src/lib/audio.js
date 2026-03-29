@@ -25,8 +25,124 @@ export function isRunning() {
   return ctx?.state === 'running';
 }
 
-// ── State node yang aktif ──────────────────────────────────────
-const active = [null, null];   // active[0]=snare, active[1]=kick
+// ── Synth untuk Sensor 2 ───────────────────────────────────────
+// Nota mengikut LED level 1-4 (pentatonic C major)
+const SYNTH_NOTES = [0, 130.81, 164.81, 196.00, 246.94]; // C3 E3 G3 B3
+
+let _synth = null;   // node aktif synth
+
+export async function startSynth(ledLevel = 1, velocity = 0.8) {
+  const ac  = await ensureRunning();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  const freq = SYNTH_NOTES[Math.max(1, Math.min(4, ledLevel))];
+
+  // Hentikan synth lama jika ada
+  if (_synth) { _stopSynthNodes(0); }
+
+  // Reverb buffer (simple convolution reverb)
+  const reverbBuf = _makeReverbBuf(ac, 1.5);
+  const reverb    = ac.createConvolver();
+  reverb.buffer   = reverbBuf;
+
+  const reverbGain = ac.createGain();
+  reverbGain.gain.value = 0.35;
+
+  // Master output
+  const master = ac.createGain();
+  master.gain.setValueAtTime(0, ac.currentTime);
+  master.gain.linearRampToValueAtTime(vel * 0.5, ac.currentTime + 0.08);
+  master.connect(ac.destination);
+  reverb.connect(reverbGain); reverbGain.connect(ac.destination);
+
+  // LP filter dengan resonance
+  const filter = ac.createBiquadFilter();
+  filter.type            = 'lowpass';
+  filter.Q.value         = 4.0;
+  filter.frequency.setValueAtTime(200, ac.currentTime);
+  filter.frequency.linearRampToValueAtTime(800 + ledLevel * 400, ac.currentTime + 0.15);
+
+  // Osc 1 — saw utama
+  const osc1 = ac.createOscillator();
+  osc1.type            = 'sawtooth';
+  osc1.frequency.value = freq;
+
+  // Osc 2 — detune untuk chorus effect
+  const osc2 = ac.createOscillator();
+  osc2.type            = 'sawtooth';
+  osc2.frequency.value = freq * 1.008;   // detune +8 cent
+
+  // Osc 3 — sub oktaf bawah
+  const osc3 = ac.createOscillator();
+  osc3.type            = 'sine';
+  osc3.frequency.value = freq * 0.5;
+
+  const osc3g = ac.createGain();
+  osc3g.gain.value = 0.4;
+
+  osc1.connect(filter); osc2.connect(filter);
+  osc3.connect(osc3g); osc3g.connect(filter);
+  filter.connect(master); filter.connect(reverb);
+
+  osc1.start(); osc2.start(); osc3.start();
+
+  _synth = { osc1, osc2, osc3, filter, master, reverbGain };
+}
+
+export function updateSynth(ledLevel = 1, velocity = 0.8) {
+  if (!_synth) return;
+  const ac   = getCtx();
+  const vel  = Math.max(0.1, Math.min(1.0, velocity));
+  const freq = SYNTH_NOTES[Math.max(1, Math.min(4, ledLevel))];
+  const now  = ac.currentTime;
+
+  // Glide ke nota baru
+  _synth.osc1.frequency.linearRampToValueAtTime(freq, now + 0.05);
+  _synth.osc2.frequency.linearRampToValueAtTime(freq * 1.008, now + 0.05);
+  _synth.osc3.frequency.linearRampToValueAtTime(freq * 0.5, now + 0.05);
+
+  // Buka filter lebih lebar bila LED naik
+  _synth.filter.frequency.linearRampToValueAtTime(800 + ledLevel * 400, now + 0.08);
+  _synth.master.gain.linearRampToValueAtTime(vel * 0.5, now + 0.05);
+}
+
+export function stopSynth(fadeMs = 120) {
+  if (!_synth) return;
+  _stopSynthNodes(fadeMs);
+}
+
+function _stopSynthNodes(fadeMs = 120) {
+  if (!_synth) return;
+  const ac   = getCtx();
+  const node = _synth;
+  _synth     = null;
+  const now  = ac.currentTime;
+  const fadeS = fadeMs / 1000;
+  node.master.gain.cancelScheduledValues(now);
+  node.master.gain.setValueAtTime(node.master.gain.value, now);
+  node.master.gain.linearRampToValueAtTime(0, now + fadeS);
+  node.reverbGain.gain.linearRampToValueAtTime(0, now + fadeS);
+  setTimeout(() => {
+    try { node.osc1.stop(); } catch {}
+    try { node.osc2.stop(); } catch {}
+    try { node.osc3.stop(); } catch {}
+  }, fadeMs + 50);
+}
+
+function _makeReverbBuf(ac, duration) {
+  const sr   = ac.sampleRate;
+  const len  = Math.floor(sr * duration);
+  const buf  = ac.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.5);
+    }
+  }
+  return buf;
+}
+
+// ── State node yang aktif (sustained sensor sounds — tidak digunakan lagi) ──
+const active = [null, null];
 
 // Setiap entry: { noiseSource, osc1, osc2, masterGain }
 

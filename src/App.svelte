@@ -3,7 +3,7 @@
   import Waveform       from './lib/Waveform.svelte';
   import SerialMonitor  from './lib/SerialMonitor.svelte';
   import BeatSequencer  from './lib/BeatSequencer.svelte';
-  import { unlockAudio, isRunning } from './lib/audio.js';
+  import { unlockAudio, isRunning, startSynth, updateSynth, stopSynth } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd
@@ -19,9 +19,12 @@
   let hits = [0, 0];
   let bpm  = [0, 0];
   const hitTimes = [[], []];
+  let synthNote  = '—';   // nota semasa synth
+  const NOTE_NAMES = ['', 'C3', 'E3', 'G3', 'B3'];
 
   import { hitEvent } from './lib/serial.js';
 
+  // Hit counter & BPM
   hitEvent.subscribe(e => {
     if (e.idx < 0 || !e.ts) return;
     hits[e.idx]++;
@@ -35,6 +38,26 @@
       bpm[e.idx] = Math.round(60000 / (intervals.reduce((a,b)=>a+b,0)/intervals.length));
       bpm = [...bpm];
     }
+  });
+
+  // Sensor 2 (idx=1) → Synth
+  let _prevLed2 = 0;
+  sensors.subscribe(arr => {
+    if (!audioEnabled) return;
+    const led = arr[1]?.led ?? 0;
+    const vel = Math.max(0.1, Math.min(1.0, led / 4));
+
+    if (led > 0 && _prevLed2 === 0) {
+      synthNote = NOTE_NAMES[led] ?? '—';
+      startSynth(led, vel);
+    } else if (led > 0 && led !== _prevLed2) {
+      synthNote = NOTE_NAMES[led] ?? '—';
+      updateSynth(led, vel);
+    } else if (led === 0 && _prevLed2 > 0) {
+      synthNote = '—';
+      stopSynth();
+    }
+    _prevLed2 = led;
   });
 
   async function toggleConn() {
@@ -125,6 +148,17 @@
   <section class="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
     {#each $sensors as s, i}
       <div class="card p-4">
+        <!-- Label jenis -->
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
+            {i === 0 ? '🥁 SEQUENCER' : '🎹 SYNTH'}
+          </span>
+          {#if i === 1 && synthNote !== '—'}
+            <span class="text-xs font-mono px-2 py-0.5 rounded bg-green-950 text-green-400 border border-green-900">
+              ♪ {synthNote}
+            </span>
+          {/if}
+        </div>
         <DrumPad
           idx   = {i}
           name  = {NAMES[i]}
