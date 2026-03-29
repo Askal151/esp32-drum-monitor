@@ -4,11 +4,12 @@
   5 track: Kick, Snare, Hihat, Clap, Rim
 -->
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onDestroy } from 'svelte';
   import {
     scheduleKick, scheduleSnare, scheduleHihat,
     scheduleClap, scheduleRim, getAudioCtx, unlockAudio
   } from './audio.js';
+  import { hitEvent } from './serial.js';
 
   const STEPS   = 16;
   const TRACKS  = [
@@ -60,13 +61,41 @@
 
   // Grid state: pattern[trackIdx][stepIdx] = 0/1
   let pattern = TRACKS.map(t => new Array(STEPS).fill(0));
-  let bpm     = 120;
-  let playing = false;
-  let curStep = -1;   // step yang sedang bermain (untuk highlight)
+  let bpm       = 120;
+  let playing   = false;
+  let sensorMode = true;   // sensor trigger step sequencer
+  let curStep   = -1;
   let selPreset = 'Basic';
 
   // Velocity per track (0.0–1.0)
   let vels = TRACKS.map(() => 0.8);
+
+  // ── Sensor trigger ─────────────────────────────────────────────
+  // Sensor S1 → advance + fire step untuk track SNARE (idx 1)
+  // Sensor S2 → advance + fire step untuk track KICK  (idx 0)
+  // Tapi lebih natural: mana-mana sensor → fire SEMUA track di step semasa
+  const SENSOR_TRACK = [1, 0];   // S1=snare(1), S2=kick(0)
+
+  let _sensorStep = [0, 0];   // step bebas per sensor
+
+  function fireStep(step, velocity = 0.8) {
+    const ac = getAudioCtx();
+    const t  = ac.currentTime;
+    for (let ti = 0; ti < TRACKS.length; ti++) {
+      if (pattern[ti][step]) TRACKS[ti].fn(t, vels[ti] * velocity);
+    }
+    curStep = step;
+  }
+
+  const unsubHit = hitEvent.subscribe(e => {
+    if (!sensorMode || e.idx < 0 || !e.ts) return;
+    const si  = e.idx;
+    const vel = Math.max(0.2, Math.min(1.0, e.velocity / 100));
+    // Fire step semasa untuk sensor ini
+    fireStep(_sensorStep[si], vel);
+    // Advance ke step berikut
+    _sensorStep[si] = (_sensorStep[si] + 1) % STEPS;
+  });
 
   // Load preset
   function loadPreset(name) {
@@ -139,7 +168,7 @@
     _timerId = setTimeout(scheduler, 0);
   }
 
-  onDestroy(() => { clearTimeout(_timerId); });
+  onDestroy(() => { clearTimeout(_timerId); unsubHit(); });
 </script>
 
 <div class="flex flex-col gap-3 h-full bg-slate-950 rounded-lg p-3 overflow-y-auto">
@@ -180,6 +209,16 @@
         >{name}</button>
       {/each}
     </div>
+
+    <!-- Sensor Mode toggle -->
+    <button
+      class="text-xs px-3 py-1.5 rounded-md font-bold ring-1 transition-all
+        {sensorMode
+          ? 'bg-violet-950 text-violet-300 ring-violet-800'
+          : 'bg-slate-900 text-slate-600 ring-slate-800 hover:text-slate-400'}"
+      on:click={() => { _sensorStep = [0,0]; sensorMode = !sensorMode; }}
+      title="Sensor trigger sequencer step"
+    >🎯 Sensor {sensorMode ? 'ON' : 'OFF'}</button>
 
     <button class="ml-auto text-xs px-2 py-1 bg-slate-900 border border-slate-800 rounded text-slate-600 hover:text-red-400"
       on:click={clearAll}>🗑 Clear</button>

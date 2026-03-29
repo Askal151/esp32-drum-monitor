@@ -3,9 +3,9 @@
   import Waveform       from './lib/Waveform.svelte';
   import SerialMonitor  from './lib/SerialMonitor.svelte';
   import BeatSequencer  from './lib/BeatSequencer.svelte';
-  import { scheduleSnare, scheduleKick, getAudioCtx, unlockAudio } from './lib/audio.js';
+  import { unlockAudio } from './lib/audio.js';
   import {
-    portState, connected, sensors, packetCount, hitEvent,
+    portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd
   } from './lib/serial.js';
 
@@ -17,44 +17,22 @@
   let audioEnabled = true;
   let hits = [0, 0];
   let bpm  = [0, 0];
-  const hitTimes  = [[], []];
-  const prevLed   = [0, 0];   // track LED state sebelumnya
+  const hitTimes = [[], []];
 
-  function calcBpm(times) {
+  import { hitEvent } from './lib/serial.js';
+
+  hitEvent.subscribe(e => {
+    if (e.idx < 0 || !e.ts) return;
+    hits[e.idx]++;
+    hits = [...hits];
+    hitTimes[e.idx].push(e.ts);
+    if (hitTimes[e.idx].length > 20) hitTimes[e.idx].shift();
     const now = Date.now();
-    const recent = times.filter(t => now - t < 10000);
-    if (recent.length < 2) return 0;
-    const intervals = [];
-    for (let i = 1; i < recent.length; i++) intervals.push(recent[i] - recent[i-1]);
-    const avgMs = intervals.reduce((a,b)=>a+b,0) / intervals.length;
-    return Math.round(60000 / avgMs);
-  }
-
-  // Sensor trigger — main bunyi one-shot bila LED 0 → >0 (seperti pukulan drum)
-  sensors.subscribe(arr => {
-    for (let i = 0; i < 2; i++) {
-      const led = arr[i].led;
-
-      if (led > 0 && prevLed[i] === 0) {
-        // Hit! — velocity dari LED level (1-4 → 0.25-1.0)
-        const vel = Math.max(0.25, Math.min(1.0, led / 4));
-
-        if (audioEnabled) {
-          const t = getAudioCtx().currentTime;
-          if (i === 0) scheduleSnare(t, vel);
-          else         scheduleKick(t, vel);
-        }
-
-        // Hit counter & BPM
-        hits[i]++;
-        hits = [...hits];
-        hitTimes[i].push(Date.now());
-        if (hitTimes[i].length > 20) hitTimes[i].shift();
-        bpm[i] = calcBpm(hitTimes[i]);
-        bpm = [...bpm];
-      }
-
-      prevLed[i] = led;
+    const recent = hitTimes[e.idx].filter(t => now - t < 10000);
+    if (recent.length >= 2) {
+      const intervals = recent.slice(1).map((t,i) => t - recent[i]);
+      bpm[e.idx] = Math.round(60000 / (intervals.reduce((a,b)=>a+b,0)/intervals.length));
+      bpm = [...bpm];
     }
   });
 
