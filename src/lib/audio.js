@@ -11,8 +11,18 @@ let ctx = null;
 
 function getCtx() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
-  if (ctx.state === 'suspended') ctx.resume();
   return ctx;
+}
+
+// Pastikan AudioContext dalam state 'running' — await ini sebelum schedule
+export async function ensureRunning() {
+  const ac = getCtx();
+  if (ac.state !== 'running') await ac.resume();
+  return ac;
+}
+
+export function isRunning() {
+  return ctx?.state === 'running';
 }
 
 // ── State node yang aktif ──────────────────────────────────────
@@ -174,7 +184,9 @@ export function stopSound(idx, fadeMs = 40) {
   }, fadeMs + 30);
 }
 
-export function unlockAudio() { getCtx(); }
+export async function unlockAudio() {
+  await ensureRunning();
+}
 
 // ── One-shot scheduled hits (untuk beat sequencer) ─────────────
 // time = AudioContext.currentTime pada masa beat berlaku

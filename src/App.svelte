@@ -3,7 +3,7 @@
   import Waveform       from './lib/Waveform.svelte';
   import SerialMonitor  from './lib/SerialMonitor.svelte';
   import BeatSequencer  from './lib/BeatSequencer.svelte';
-  import { unlockAudio } from './lib/audio.js';
+  import { unlockAudio, isRunning } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd
@@ -13,7 +13,8 @@
   const NAMES = ['SNARE', 'KICK'];
 
   let tab = 'drum';
-  let lastError = '';
+  let lastError   = '';
+  let audioReady  = false;
   let audioEnabled = true;
   let hits = [0, 0];
   let bpm  = [0, 0];
@@ -46,8 +47,14 @@
     }
   }
 
+  async function activateAudio() {
+    await unlockAudio();
+    audioReady = isRunning();
+    audioEnabled = true;
+  }
+
   function toggleAudio() {
-    unlockAudio();
+    if (!audioReady) { activateAudio(); return; }
     audioEnabled = !audioEnabled;
   }
 
@@ -79,11 +86,13 @@
     <div class="flex items-center gap-2">
       <!-- Toggle audio -->
       <button
-        class="text-xs px-3 py-1.5 rounded-md font-bold ring-1 transition-opacity
-          {audioEnabled ? 'bg-violet-950 text-violet-400 ring-violet-900' : 'bg-slate-800 text-slate-500 ring-slate-700'}"
+        class="text-xs px-3 py-1.5 rounded-md font-bold ring-1 transition-all
+          {!audioReady ? 'bg-yellow-950 text-yellow-400 ring-yellow-800 animate-pulse'
+            : audioEnabled ? 'bg-violet-950 text-violet-400 ring-violet-900'
+            : 'bg-slate-800 text-slate-500 ring-slate-700'}"
         on:click={toggleAudio}
         title="Toggle suara drum"
-      >{audioEnabled ? '🔊 Audio' : '🔇 Mute'}</button>
+      >{!audioReady ? '⚠ Aktifkan Audio' : audioEnabled ? '🔊 Audio' : '🔇 Mute'}</button>
 
       {#if $connected}
         <button class="btn-gray" on:click={() => sendCmd('s')}>📋 Status</button>
@@ -94,6 +103,16 @@
       </button>
     </div>
   </header>
+
+  <!-- Banner audio belum aktif -->
+  {#if !audioReady}
+    <button
+      class="bg-yellow-950 border border-yellow-800 rounded-xl px-4 py-2.5 text-xs text-yellow-300 text-center w-full hover:bg-yellow-900 transition-colors"
+      on:click={activateAudio}
+    >
+      ⚠ Klik di sini untuk aktifkan audio — browser memerlukan interaksi pengguna
+    </button>
+  {/if}
 
   {#if lastError}
     <div class="bg-red-950 border border-red-800 rounded-xl px-4 py-2 text-xs text-red-300 flex items-center justify-between">

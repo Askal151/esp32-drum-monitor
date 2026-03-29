@@ -7,7 +7,7 @@
   import { onDestroy } from 'svelte';
   import {
     scheduleKick, scheduleSnare, scheduleHihat,
-    scheduleClap, scheduleRim, getAudioCtx, unlockAudio
+    scheduleClap, scheduleRim, getAudioCtx, ensureRunning, isRunning, unlockAudio
   } from './audio.js';
   import { hitEvent, sensors } from './serial.js';
 
@@ -125,10 +125,10 @@
     _timerId = setTimeout(scheduler, LOOKAHEAD * 1000);
   }
 
-  function start() {
-    unlockAudio();
+  async function start() {
+    const ac = await ensureRunning();   // tunggu AudioContext running
     _curBeat  = 0;
-    _nextNote = getAudioCtx().currentTime + 0.05;
+    _nextNote = ac.currentTime + 0.1;  // jadual dari sekarang + 100ms buffer
     playing   = true;
     scheduler();
   }
