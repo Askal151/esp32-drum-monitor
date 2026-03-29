@@ -9,7 +9,7 @@
     scheduleKick, scheduleSnare, scheduleHihat,
     scheduleClap, scheduleRim, getAudioCtx, unlockAudio
   } from './audio.js';
-  import { hitEvent } from './serial.js';
+  import { hitEvent, sensors } from './serial.js';
 
   const STEPS   = 16;
   const TRACKS  = [
@@ -70,31 +70,15 @@
   // Velocity per track (0.0–1.0)
   let vels = TRACKS.map(() => 0.8);
 
-  // ── Sensor trigger ─────────────────────────────────────────────
-  // Sensor S1 → advance + fire step untuk track SNARE (idx 1)
-  // Sensor S2 → advance + fire step untuk track KICK  (idx 0)
-  // Tapi lebih natural: mana-mana sensor → fire SEMUA track di step semasa
-  const SENSOR_TRACK = [1, 0];   // S1=snare(1), S2=kick(0)
+  // ── Sensor auto-play ───────────────────────────────────────────
+  // Mana-mana sensor kesan magnet (LED > 0) → sequencer mula
+  // Semua sensor LED = 0 → sequencer berhenti
 
-  let _sensorStep = [0, 0];   // step bebas per sensor
-
-  function fireStep(step, velocity = 0.8) {
-    const ac = getAudioCtx();
-    const t  = ac.currentTime;
-    for (let ti = 0; ti < TRACKS.length; ti++) {
-      if (pattern[ti][step]) TRACKS[ti].fn(t, vels[ti] * velocity);
-    }
-    curStep = step;
-  }
-
-  const unsubHit = hitEvent.subscribe(e => {
-    if (!sensorMode || e.idx < 0 || !e.ts) return;
-    const si  = e.idx;
-    const vel = Math.max(0.2, Math.min(1.0, e.velocity / 100));
-    // Fire step semasa untuk sensor ini
-    fireStep(_sensorStep[si], vel);
-    // Advance ke step berikut
-    _sensorStep[si] = (_sensorStep[si] + 1) % STEPS;
+  const unsubHit = sensors.subscribe(arr => {
+    if (!sensorMode) return;
+    const anyActive = arr.some(s => s.led > 0);
+    if (anyActive && !playing) start();
+    else if (!anyActive && playing) stop();
   });
 
   // Load preset
@@ -216,7 +200,7 @@
         {sensorMode
           ? 'bg-violet-950 text-violet-300 ring-violet-800'
           : 'bg-slate-900 text-slate-600 ring-slate-800 hover:text-slate-400'}"
-      on:click={() => { _sensorStep = [0,0]; sensorMode = !sensorMode; }}
+      on:click={() => { sensorMode = !sensorMode; if (!sensorMode) stop(); }}
       title="Sensor trigger sequencer step"
     >🎯 Sensor {sensorMode ? 'ON' : 'OFF'}</button>
 
