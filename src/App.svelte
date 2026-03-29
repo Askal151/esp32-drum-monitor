@@ -3,7 +3,7 @@
   import Waveform       from './lib/Waveform.svelte';
   import SerialMonitor  from './lib/SerialMonitor.svelte';
   import BeatSequencer  from './lib/BeatSequencer.svelte';
-  import { startSound, stopSound, updateIntensity, unlockAudio } from './lib/audio.js';
+  import { scheduleSnare, scheduleKick, getAudioCtx, unlockAudio } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount, hitEvent,
     connect, disconnect, sendCmd
@@ -30,15 +30,21 @@
     return Math.round(60000 / avgMs);
   }
 
-  // Track LED state per sensor — main/henti bunyi mengikut LED
+  // Sensor trigger — main bunyi one-shot bila LED 0 → >0 (seperti pukulan drum)
   sensors.subscribe(arr => {
     for (let i = 0; i < 2; i++) {
       const led = arr[i].led;
-      const vel = Math.max(0.1, Math.min(1.0, led / 4));
 
       if (led > 0 && prevLed[i] === 0) {
-        // LED mula aktif → start bunyi
-        if (audioEnabled) startSound(i, vel);
+        // Hit! — velocity dari LED level (1-4 → 0.25-1.0)
+        const vel = Math.max(0.25, Math.min(1.0, led / 4));
+
+        if (audioEnabled) {
+          const t = getAudioCtx().currentTime;
+          if (i === 0) scheduleSnare(t, vel);
+          else         scheduleKick(t, vel);
+        }
+
         // Hit counter & BPM
         hits[i]++;
         hits = [...hits];
@@ -46,14 +52,6 @@
         if (hitTimes[i].length > 20) hitTimes[i].shift();
         bpm[i] = calcBpm(hitTimes[i]);
         bpm = [...bpm];
-
-      } else if (led > 0 && led !== prevLed[i]) {
-        // Intensity berubah → update kelantangan
-        if (audioEnabled) updateIntensity(i, vel);
-
-      } else if (led === 0 && prevLed[i] > 0) {
-        // LED padam → henti bunyi
-        stopSound(i);
       }
 
       prevLed[i] = led;
@@ -64,7 +62,6 @@
     lastError = '';
     unlockAudio();
     if ($connected) {
-      stopSound(0); stopSound(1);
       await disconnect();
     } else {
       try { await connect(); } catch(e) { lastError = e.message; }
@@ -74,7 +71,6 @@
   function toggleAudio() {
     unlockAudio();
     audioEnabled = !audioEnabled;
-    if (!audioEnabled) { stopSound(0); stopSound(1); }
   }
 
   let panelH = 340;
