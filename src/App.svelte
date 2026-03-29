@@ -1,7 +1,8 @@
 <script>
-  import DrumPad       from './lib/DrumPad.svelte';
-  import Waveform      from './lib/Waveform.svelte';
-  import SerialMonitor from './lib/SerialMonitor.svelte';
+  import DrumPad        from './lib/DrumPad.svelte';
+  import Waveform       from './lib/Waveform.svelte';
+  import SerialMonitor  from './lib/SerialMonitor.svelte';
+  import BeatSequencer  from './lib/BeatSequencer.svelte';
   import { startSound, stopSound, updateIntensity, unlockAudio } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount, hitEvent,
@@ -152,13 +153,19 @@
       <div class="w-10 h-0.5 bg-slate-800 rounded"></div>
     </div>
     <div class="flex items-center gap-1 px-3 bg-slate-950 border-b border-slate-800 shrink-0">
-      <button class="tab-item {tab==='drum' ? 'active' : ''}" on:click={() => tab='drum'}>📈 Waveform</button>
-      <button class="tab-item {tab==='monitor' ? 'active' : ''}" on:click={() => tab='monitor'}>⬛ Serial Monitor</button>
+      <button class="tab-item {tab==='drum'      ? 'active' : ''}" on:click={() => tab='drum'}>📈 Waveform</button>
+      <button class="tab-item {tab==='sequencer' ? 'active' : ''}" on:click={() => tab='sequencer'}>🥁 Sequencer</button>
+      <button class="tab-item {tab==='monitor'   ? 'active' : ''}" on:click={() => tab='monitor'}>⬛ Serial Monitor</button>
     </div>
     <div class="flex-1 overflow-hidden relative">
       {#if tab === 'drum'}
         <div class="absolute inset-0 p-2">
           <Waveform />
+        </div>
+      {/if}
+      {#if tab === 'sequencer'}
+        <div class="absolute inset-0">
+          <BeatSequencer />
         </div>
       {/if}
       <div class="absolute inset-0 p-2" style="display:{tab==='monitor' ? 'flex' : 'none'}; flex-direction:column">

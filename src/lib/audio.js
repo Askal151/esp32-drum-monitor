@@ -176,6 +176,162 @@ export function stopSound(idx, fadeMs = 40) {
 
 export function unlockAudio() { getCtx(); }
 
+// ── One-shot scheduled hits (untuk beat sequencer) ─────────────
+// time = AudioContext.currentTime pada masa beat berlaku
+
+export function scheduleKick(time, velocity = 1.0) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(vel * 0.9, time);
+  master.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
+  master.connect(ac.destination);
+
+  // Sub bass pitch sweep
+  const osc = ac.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(160, time);
+  osc.frequency.exponentialRampToValueAtTime(45, time + 0.35);
+
+  // Click transient
+  const click = ac.createOscillator();
+  click.type = 'square';
+  click.frequency.setValueAtTime(1000, time);
+  click.frequency.exponentialRampToValueAtTime(150, time + 0.02);
+  const cg = ac.createGain();
+  cg.gain.setValueAtTime(vel * 0.25, time);
+  cg.gain.exponentialRampToValueAtTime(0.001, time + 0.025);
+
+  const lp = ac.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 200;
+
+  const dist = ac.createWaveShaper();
+  dist.curve = makeDistCurve(80);
+
+  osc.connect(dist); dist.connect(lp); lp.connect(master);
+  click.connect(cg); cg.connect(master);
+
+  osc.start(time);   osc.stop(time + 0.55);
+  click.start(time); click.stop(time + 0.03);
+}
+
+export function scheduleSnare(time, velocity = 1.0) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(vel * 0.7, time);
+  master.gain.exponentialRampToValueAtTime(0.001, time + 0.22);
+  master.connect(ac.destination);
+
+  // Noise burst
+  const size = Math.floor(ac.sampleRate * 0.25);
+  const buf  = ac.createBuffer(1, size, ac.sampleRate);
+  const d    = buf.getChannelData(0);
+  for (let i = 0; i < size; i++) d[i] = Math.random() * 2 - 1;
+  const noise = ac.createBufferSource();
+  noise.buffer = buf;
+
+  const bp = ac.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 3200; bp.Q.value = 0.7;
+  const hp = ac.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 1200;
+
+  // Body tone
+  const body = ac.createOscillator();
+  body.type = 'triangle';
+  body.frequency.setValueAtTime(200, time);
+  body.frequency.exponentialRampToValueAtTime(90, time + 0.07);
+  const bg = ac.createGain();
+  bg.gain.setValueAtTime(vel * 0.4, time);
+  bg.gain.exponentialRampToValueAtTime(0.001, time + 0.09);
+
+  noise.connect(bp); bp.connect(hp); hp.connect(master);
+  body.connect(bg); bg.connect(master);
+
+  noise.start(time); noise.stop(time + 0.25);
+  body.start(time);  body.stop(time + 0.1);
+}
+
+export function scheduleHihat(time, velocity = 0.5, open = false) {
+  const ac  = getCtx();
+  const vel = Math.max(0.05, Math.min(1.0, velocity));
+  const dur = open ? 0.3 : 0.06;
+
+  const size = Math.floor(ac.sampleRate * 0.35);
+  const buf  = ac.createBuffer(1, size, ac.sampleRate);
+  const d    = buf.getChannelData(0);
+  for (let i = 0; i < size; i++) d[i] = Math.random() * 2 - 1;
+  const noise = ac.createBufferSource();
+  noise.buffer = buf;
+
+  const hp = ac.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 7000;
+  const bp = ac.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 10000; bp.Q.value = 0.8;
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(vel * 0.4, time);
+  master.gain.exponentialRampToValueAtTime(0.001, time + dur);
+  master.connect(ac.destination);
+
+  noise.connect(hp); hp.connect(bp); bp.connect(master);
+  noise.start(time); noise.stop(time + dur + 0.05);
+}
+
+export function scheduleClap(time, velocity = 0.8) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+
+  // 3 noise burst cepat untuk kesan clap
+  for (let i = 0; i < 3; i++) {
+    const t = time + i * 0.012;
+    const size = Math.floor(ac.sampleRate * 0.08);
+    const buf  = ac.createBuffer(1, size, ac.sampleRate);
+    const d    = buf.getChannelData(0);
+    for (let j = 0; j < size; j++) d[j] = Math.random() * 2 - 1;
+    const noise = ac.createBufferSource();
+    noise.buffer = buf;
+
+    const bp = ac.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 1200; bp.Q.value = 0.5;
+    const hp = ac.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 800;
+
+    const g = ac.createGain();
+    g.gain.setValueAtTime(vel * (i === 2 ? 0.6 : 0.35), t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+    g.connect(ac.destination);
+
+    noise.connect(bp); bp.connect(hp); hp.connect(g);
+    noise.start(t); noise.stop(t + 0.08);
+  }
+}
+
+export function scheduleRim(time, velocity = 0.7) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+
+  const osc = ac.createOscillator();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(1600, time);
+  osc.frequency.exponentialRampToValueAtTime(400, time + 0.05);
+
+  const g = ac.createGain();
+  g.gain.setValueAtTime(vel * 0.5, time);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.06);
+  g.connect(ac.destination);
+
+  const bp = ac.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 1000; bp.Q.value = 1.5;
+
+  osc.connect(bp); bp.connect(g);
+  osc.start(time); osc.stop(time + 0.07);
+}
+
+export function getAudioCtx() { return getCtx(); }
+
 function makeDistCurve(amount) {
   const n = 256, curve = new Float32Array(n);
   for (let i = 0; i < n; i++) {
