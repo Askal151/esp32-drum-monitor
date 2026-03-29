@@ -3,7 +3,8 @@
   import Waveform       from './lib/Waveform.svelte';
   import SerialMonitor  from './lib/SerialMonitor.svelte';
   import BeatSequencer  from './lib/BeatSequencer.svelte';
-  import { unlockAudio, isRunning, startSynth, updateSynth, stopSynth } from './lib/audio.js';
+  import SynthSequencer from './lib/SynthSequencer.svelte';
+  import { unlockAudio, isRunning } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd
@@ -19,8 +20,6 @@
   let hits = [0, 0];
   let bpm  = [0, 0];
   const hitTimes = [[], []];
-  let synthNote  = '—';   // nota semasa synth
-  const NOTE_NAMES = ['', 'C3', 'E3', 'G3', 'B3'];
 
   import { hitEvent } from './lib/serial.js';
 
@@ -38,26 +37,6 @@
       bpm[e.idx] = Math.round(60000 / (intervals.reduce((a,b)=>a+b,0)/intervals.length));
       bpm = [...bpm];
     }
-  });
-
-  // Sensor 2 (idx=1) → Synth
-  let _prevLed2 = 0;
-  sensors.subscribe(arr => {
-    if (!audioEnabled) return;
-    const led = arr[1]?.led ?? 0;
-    const vel = Math.max(0.1, Math.min(1.0, led / 4));
-
-    if (led > 0 && _prevLed2 === 0) {
-      synthNote = NOTE_NAMES[led] ?? '—';
-      startSynth(led, vel);
-    } else if (led > 0 && led !== _prevLed2) {
-      synthNote = NOTE_NAMES[led] ?? '—';
-      updateSynth(led, vel);
-    } else if (led === 0 && _prevLed2 > 0) {
-      synthNote = '—';
-      stopSynth();
-    }
-    _prevLed2 = led;
   });
 
   async function toggleConn() {
@@ -84,7 +63,7 @@
   let panelH = 340;
   let resizing = false, ry0 = 0, rh0 = 0;
   function rstart(e) { resizing=true; ry0=e.clientY; rh0=panelH; e.preventDefault(); }
-  function rmove(e)  { if(resizing) panelH=Math.max(200,Math.min(600,rh0+ry0-e.clientY)); }
+  function rmove(e)  { if(resizing) panelH=Math.max(200,Math.min(700,rh0+ry0-e.clientY)); }
   function rend()    { resizing=false; }
 </script>
 
@@ -148,16 +127,10 @@
   <section class="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
     {#each $sensors as s, i}
       <div class="card p-4">
-        <!-- Label jenis -->
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
             {i === 0 ? '🥁 SEQUENCER' : '🎹 SYNTH'}
           </span>
-          {#if i === 1 && synthNote !== '—'}
-            <span class="text-xs font-mono px-2 py-0.5 rounded bg-green-950 text-green-400 border border-green-900">
-              ♪ {synthNote}
-            </span>
-          {/if}
         </div>
         <DrumPad
           idx   = {i}
@@ -173,8 +146,8 @@
     {/each}
   </section>
 
-  <!-- PANEL BAWAH -->
-  <section class="card flex flex-col overflow-hidden" style="height:{panelH}px; min-height:200px; max-height:600px">
+  <!-- PANEL BAWAH — semua komponen always mounted, guna display:none -->
+  <section class="card flex flex-col overflow-hidden" style="height:{panelH}px; min-height:200px; max-height:700px">
     <div class="h-3 shrink-0 flex items-center justify-center cursor-ns-resize bg-slate-950 border-b border-slate-800 hover:bg-slate-900 transition-colors"
       on:mousedown={rstart} role="separator" aria-orientation="horizontal">
       <div class="w-10 h-0.5 bg-slate-800 rounded"></div>
@@ -185,19 +158,28 @@
       <button class="tab-item {tab==='monitor'   ? 'active' : ''}" on:click={() => tab='monitor'}>⬛ Serial Monitor</button>
     </div>
     <div class="flex-1 overflow-hidden relative">
-      {#if tab === 'drum'}
-        <div class="absolute inset-0 p-2">
-          <Waveform />
-        </div>
-      {/if}
-      {#if tab === 'sequencer'}
-        <div class="absolute inset-0">
+
+      <!-- Waveform — always mounted -->
+      <div class="absolute inset-0 p-2" style="display:{tab==='drum' ? 'block' : 'none'}">
+        <Waveform />
+      </div>
+
+      <!-- Sequencer — drum + synth stacked, always mounted -->
+      <div class="absolute inset-0 overflow-y-auto flex flex-col gap-px"
+           style="display:{tab==='sequencer' ? 'flex' : 'none'}">
+        <div style="height:330px; flex:none">
           <BeatSequencer />
         </div>
-      {/if}
+        <div class="border-t border-slate-800" style="height:260px; flex:none">
+          <SynthSequencer />
+        </div>
+      </div>
+
+      <!-- Serial Monitor — always mounted -->
       <div class="absolute inset-0 p-2" style="display:{tab==='monitor' ? 'flex' : 'none'}; flex-direction:column">
         <SerialMonitor onSendCmd={sendCmd} />
       </div>
+
     </div>
   </section>
 

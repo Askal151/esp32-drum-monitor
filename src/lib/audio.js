@@ -460,6 +460,95 @@ export function scheduleRim(time, velocity = 0.7) {
 
 export function getAudioCtx() { return getCtx(); }
 
+// ── Shared synth output chain (dibuat sekali, dikongsi semua nota) ──
+// Mengelak penciptaan ConvolverNode baru setiap nota (punca instabiliti)
+let _synthComp   = null;   // DynamicsCompressor → destination
+let _synthReverb = null;   // ConvolverNode → _synthComp
+
+function getSynthChain(ac) {
+  if (_synthComp) return { comp: _synthComp, reverb: _synthReverb };
+
+  // Compressor — cegah clipping bila banyak nota bertindih
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -16;
+  comp.knee.value      = 8;
+  comp.ratio.value     = 5;
+  comp.attack.value    = 0.003;
+  comp.release.value   = 0.12;
+  comp.connect(ac.destination);
+
+  // Shared convolution reverb
+  const reverbBuf = _makeReverbBuf(ac, 1.2);
+  const reverb    = ac.createConvolver();
+  reverb.buffer   = reverbBuf;
+  const rvGain    = ac.createGain();
+  rvGain.gain.value = 0.28;
+  reverb.connect(rvGain);
+  rvGain.connect(comp);
+
+  _synthComp   = comp;
+  _synthReverb = reverb;
+  return { comp, reverb };
+}
+
+// ── One-shot scheduled synth nota (untuk SynthSequencer) ──────────
+// freq     = frekuensi dalam Hz
+// time     = AudioContext.currentTime untuk scheduling
+// velocity = 0.1–1.0
+// duration = tempoh bunyi dalam saat
+
+export function scheduleSynth(freq, time, velocity = 0.8, duration = 0.25) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  const dur = Math.max(0.05, duration);
+  const { comp, reverb } = getSynthChain(ac);
+
+  // Per-nota master gain (envelope)
+  const master = ac.createGain();
+  master.gain.setValueAtTime(0, time);
+  master.gain.linearRampToValueAtTime(vel * 0.42, time + 0.012);
+  master.gain.setValueAtTime(vel * 0.42, time + dur - 0.03);
+  master.gain.linearRampToValueAtTime(0, time + dur + 0.03);
+  master.connect(comp);
+
+  // LP filter — sweep attack untuk karakter synth
+  const filter = ac.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.Q.value = 3.5;
+  filter.frequency.setValueAtTime(180, time);
+  filter.frequency.linearRampToValueAtTime(1800, time + 0.035);
+  filter.frequency.setValueAtTime(1800, time + dur - 0.03);
+  filter.frequency.linearRampToValueAtTime(280, time + dur + 0.03);
+
+  // Sawtooth utama + detune (+7 cents chorus)
+  const osc1 = ac.createOscillator();
+  osc1.type = 'sawtooth';
+  osc1.frequency.value = freq;
+
+  const osc2 = ac.createOscillator();
+  osc2.type = 'sawtooth';
+  osc2.frequency.value = freq * 1.007;
+
+  // Sub oktaf
+  const sub     = ac.createOscillator();
+  sub.type      = 'sine';
+  sub.frequency.value = freq * 0.5;
+  const subGain = ac.createGain();
+  subGain.gain.value = 0.28;
+
+  osc1.connect(filter);
+  osc2.connect(filter);
+  sub.connect(subGain);
+  subGain.connect(filter);
+  filter.connect(master);
+  filter.connect(reverb);   // send ke shared reverb
+
+  const stopAt = time + dur + 0.06;
+  osc1.start(time); osc1.stop(stopAt);
+  osc2.start(time); osc2.stop(stopAt);
+  sub.start(time);  sub.stop(stopAt);
+}
+
 function makeDistCurve(amount) {
   const n = 256, curve = new Float32Array(n);
   for (let i = 0; i < n; i++) {
