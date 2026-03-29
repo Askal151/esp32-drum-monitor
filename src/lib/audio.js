@@ -1,7 +1,10 @@
 /**
- * audio.js — Synthesized drum sounds via Web Audio API
- * Snare: white noise + bandpass filter + amplitude envelope
- * Kick:  sine oscillator dengan pitch sweep (200Hz → 50Hz)
+ * audio.js — Sustained drum sounds via Web Audio API
+ * Bunyi bermain SELAMA sensor mengesan magnet (LED > 0)
+ * Berhenti bila LED = 0
+ *
+ * Snare (S1): noise buzz + mid tone (snare rattle)
+ * Kick  (S2): low sine drone + sub rumble
  */
 
 let ctx = null;
@@ -12,110 +15,166 @@ function getCtx() {
   return ctx;
 }
 
-// ── Snare ─────────────────────────────────────────────────────
-// White noise burst + tone layer
-export function playSnare(velocity = 1.0) {
-  const ac  = getCtx();
-  const now = ac.currentTime;
-  const vel = Math.max(0.1, Math.min(1.0, velocity));
+// ── State node yang aktif ──────────────────────────────────────
+const active = [null, null];   // active[0]=snare, active[1]=kick
 
-  // Noise buffer
-  const bufSize = ac.sampleRate * 0.2;
-  const buf  = ac.createBuffer(1, bufSize, ac.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+// Setiap entry: { noiseSource, osc1, osc2, masterGain }
 
-  const noise  = ac.createBufferSource();
-  noise.buffer = buf;
+// ── Noise buffer (dikongsi) ────────────────────────────────────
+let _noiseBuf = null;
+function getNoiseBuf(ac) {
+  if (_noiseBuf) return _noiseBuf;
+  const sec  = 2;
+  const size = ac.sampleRate * sec;
+  _noiseBuf  = ac.createBuffer(1, size, ac.sampleRate);
+  const d    = _noiseBuf.getChannelData(0);
+  for (let i = 0; i < size; i++) d[i] = Math.random() * 2 - 1;
+  return _noiseBuf;
+}
 
-  // Bandpass filter — snare 'crack' character
+// ── SNARE — sustained buzz ─────────────────────────────────────
+function buildSnareGraph(ac, velocity) {
+  const masterGain = ac.createGain();
+  masterGain.gain.setValueAtTime(0, ac.currentTime);
+  masterGain.gain.linearRampToValueAtTime(velocity * 0.55, ac.currentTime + 0.015);
+  masterGain.connect(ac.destination);
+
+  // Noise layer (snare rattle)
+  const noiseSource = ac.createBufferSource();
+  noiseSource.buffer = getNoiseBuf(ac);
+  noiseSource.loop   = true;
+
   const bp = ac.createBiquadFilter();
   bp.type            = 'bandpass';
-  bp.frequency.value = 3000;
-  bp.Q.value         = 0.5;
+  bp.frequency.value = 2800;
+  bp.Q.value         = 1.2;
 
-  // Highpass — buang low rumble
   const hp = ac.createBiquadFilter();
   hp.type            = 'highpass';
-  hp.frequency.value = 1000;
+  hp.frequency.value = 1500;
 
-  // Noise envelope
   const noiseGain = ac.createGain();
-  noiseGain.gain.setValueAtTime(vel * 0.8, now);
-  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+  noiseGain.gain.value = 0.7;
 
-  // Tone layer (body snare)
-  const osc = ac.createOscillator();
-  osc.type            = 'triangle';
-  osc.frequency.setValueAtTime(220, now);
-  osc.frequency.exponentialRampToValueAtTime(100, now + 0.06);
+  noiseSource.connect(bp); bp.connect(hp); hp.connect(noiseGain); noiseGain.connect(masterGain);
 
-  const toneGain = ac.createGain();
-  toneGain.gain.setValueAtTime(vel * 0.5, now);
-  toneGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+  // Mid tone layer (body)
+  const osc1 = ac.createOscillator();
+  osc1.type            = 'sawtooth';
+  osc1.frequency.value = 180;
 
-  // Master gain
-  const master = ac.createGain();
-  master.gain.value = 0.7;
+  const osc1Gain = ac.createGain();
+  osc1Gain.gain.value = 0.25;
 
-  // Route: noise → bp → hp → noiseGain → master → destination
-  noise.connect(bp); bp.connect(hp); hp.connect(noiseGain); noiseGain.connect(master);
-  // Route: osc → toneGain → master → destination
-  osc.connect(toneGain); toneGain.connect(master);
-  master.connect(ac.destination);
+  const osc1Lp = ac.createBiquadFilter();
+  osc1Lp.type            = 'lowpass';
+  osc1Lp.frequency.value = 500;
 
-  noise.start(now); noise.stop(now + 0.2);
-  osc.start(now);   osc.stop(now + 0.1);
+  osc1.connect(osc1Lp); osc1Lp.connect(osc1Gain); osc1Gain.connect(masterGain);
+
+  noiseSource.start();
+  osc1.start();
+
+  return { noiseSource, osc1, masterGain };
 }
 
-// ── Kick ──────────────────────────────────────────────────────
-// Sine oscillator pitch sweep + low thump
-export function playKick(velocity = 1.0) {
-  const ac  = getCtx();
-  const now = ac.currentTime;
-  const vel = Math.max(0.1, Math.min(1.0, velocity));
+// ── KICK — sustained low drone ─────────────────────────────────
+function buildKickGraph(ac, velocity) {
+  const masterGain = ac.createGain();
+  masterGain.gain.setValueAtTime(0, ac.currentTime);
+  masterGain.gain.linearRampToValueAtTime(velocity * 0.75, ac.currentTime + 0.02);
+  masterGain.connect(ac.destination);
 
-  // Main kick oscillator
-  const osc = ac.createOscillator();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(180, now);
-  osc.frequency.exponentialRampToValueAtTime(40, now + 0.35);
+  // Sub bass oscillator
+  const osc1 = ac.createOscillator();
+  osc1.type            = 'sine';
+  osc1.frequency.value = 55;
 
-  // Click transient
-  const click = ac.createOscillator();
-  click.type = 'square';
-  click.frequency.setValueAtTime(1200, now);
-  click.frequency.exponentialRampToValueAtTime(200, now + 0.02);
+  // Second harmonic untuk warmth
+  const osc2 = ac.createOscillator();
+  osc2.type            = 'sine';
+  osc2.frequency.value = 110;
 
-  const clickGain = ac.createGain();
-  clickGain.gain.setValueAtTime(vel * 0.3, now);
-  clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.025);
+  const osc2Gain = ac.createGain();
+  osc2Gain.gain.value = 0.3;
 
-  // Kick envelope
-  const kickGain = ac.createGain();
-  kickGain.gain.setValueAtTime(vel * 1.2, now);
-  kickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-
-  // Low pass filter untuk warm thump
+  // Low pass untuk tahan hanya bass
   const lp = ac.createBiquadFilter();
   lp.type            = 'lowpass';
-  lp.frequency.value = 200;
+  lp.frequency.value = 180;
+  lp.Q.value         = 0.8;
 
-  // Distortion / waveshaper untuk punch
+  // Slight distortion untuk punch
   const wave = ac.createWaveShaper();
-  wave.curve = makeDistCurve(120);
+  wave.curve = makeDistCurve(60);
 
-  // Master
-  const master = ac.createGain();
-  master.gain.value = 0.85;
+  osc1.connect(lp); osc2.connect(osc2Gain); osc2Gain.connect(lp);
+  lp.connect(wave); wave.connect(masterGain);
 
-  osc.connect(kickGain); kickGain.connect(wave); wave.connect(lp); lp.connect(master);
-  click.connect(clickGain); clickGain.connect(master);
-  master.connect(ac.destination);
+  osc1.start();
+  osc2.start();
 
-  osc.start(now);   osc.stop(now + 0.45);
-  click.start(now); click.stop(now + 0.03);
+  return { osc1, osc2, masterGain };
 }
+
+// ── API awam ───────────────────────────────────────────────────
+
+/**
+ * Mula mainkan bunyi untuk sensor idx (0=snare, 1=kick)
+ * Panggil bila LED berubah dari 0 → >0
+ */
+export function startSound(idx, velocity = 1.0) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+
+  // Hentikan dulu jika masih aktif
+  stopSound(idx, 0);
+
+  active[idx] = idx === 0
+    ? buildSnareGraph(ac, vel)
+    : buildKickGraph(ac, vel);
+}
+
+/**
+ * Kemaskini kelantangan mengikut intensity semasa (LED level)
+ * Panggil bila LED berubah nilai (1→2, 2→3, dll)
+ */
+export function updateIntensity(idx, velocity = 1.0) {
+  if (!active[idx]) return;
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  const ac  = getCtx();
+  active[idx].masterGain.gain.linearRampToValueAtTime(
+    vel * (idx === 0 ? 0.55 : 0.75),
+    ac.currentTime + 0.02
+  );
+}
+
+/**
+ * Hentikan bunyi untuk sensor idx
+ * Panggil bila LED = 0
+ * fadeMs = masa pudar (ms)
+ */
+export function stopSound(idx, fadeMs = 40) {
+  if (!active[idx]) return;
+  const ac   = getCtx();
+  const node = active[idx];
+  active[idx] = null;
+
+  const now = ac.currentTime;
+  const fadeS = fadeMs / 1000;
+
+  node.masterGain.gain.cancelScheduledValues(now);
+  node.masterGain.gain.setValueAtTime(node.masterGain.gain.value, now);
+  node.masterGain.gain.linearRampToValueAtTime(0, now + fadeS);
+
+  setTimeout(() => {
+    try { node.osc1?.stop(); }        catch {}
+    try { node.osc2?.stop(); }        catch {}
+    try { node.noiseSource?.stop(); } catch {}
+  }, fadeMs + 30);
+}
+
+export function unlockAudio() { getCtx(); }
 
 function makeDistCurve(amount) {
   const n = 256, curve = new Float32Array(n);
@@ -124,9 +183,4 @@ function makeDistCurve(amount) {
     curve[i] = ((Math.PI + amount) * x) / (Math.PI + amount * Math.abs(x));
   }
   return curve;
-}
-
-// Unlock AudioContext dengan user gesture pertama
-export function unlockAudio() {
-  getCtx();
 }

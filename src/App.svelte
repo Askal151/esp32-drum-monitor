@@ -2,7 +2,7 @@
   import DrumPad       from './lib/DrumPad.svelte';
   import Waveform      from './lib/Waveform.svelte';
   import SerialMonitor from './lib/SerialMonitor.svelte';
-  import { playSnare, playKick, unlockAudio } from './lib/audio.js';
+  import { startSound, stopSound, updateIntensity, unlockAudio } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount, hitEvent,
     connect, disconnect, sendCmd
@@ -13,10 +13,11 @@
 
   let tab = 'drum';
   let lastError = '';
-  let audioEnabled = true;   // toggle audio on/off
+  let audioEnabled = true;
   let hits = [0, 0];
   let bpm  = [0, 0];
-  const hitTimes = [[], []];
+  const hitTimes  = [[], []];
+  const prevLed   = [0, 0];   // track LED state sebelumnya
 
   function calcBpm(times) {
     const now = Date.now();
@@ -28,28 +29,51 @@
     return Math.round(60000 / avgMs);
   }
 
-  hitEvent.subscribe(e => {
-    if (e.idx < 0 || !e.ts) return;
-    hits[e.idx]++;
-    hits = [...hits];
-    hitTimes[e.idx].push(e.ts);
-    if (hitTimes[e.idx].length > 20) hitTimes[e.idx].shift();
-    bpm[e.idx] = calcBpm(hitTimes[e.idx]);
-    bpm = [...bpm];
+  // Track LED state per sensor — main/henti bunyi mengikut LED
+  sensors.subscribe(arr => {
+    for (let i = 0; i < 2; i++) {
+      const led = arr[i].led;
+      const vel = Math.max(0.1, Math.min(1.0, led / 4));
 
-    // Main suara drum
-    if (audioEnabled) {
-      const vel = Math.max(0.15, Math.min(1.0, e.velocity / 100));
-      if (e.idx === 0) playSnare(vel);
-      else             playKick(vel);
+      if (led > 0 && prevLed[i] === 0) {
+        // LED mula aktif → start bunyi
+        if (audioEnabled) startSound(i, vel);
+        // Hit counter & BPM
+        hits[i]++;
+        hits = [...hits];
+        hitTimes[i].push(Date.now());
+        if (hitTimes[i].length > 20) hitTimes[i].shift();
+        bpm[i] = calcBpm(hitTimes[i]);
+        bpm = [...bpm];
+
+      } else if (led > 0 && led !== prevLed[i]) {
+        // Intensity berubah → update kelantangan
+        if (audioEnabled) updateIntensity(i, vel);
+
+      } else if (led === 0 && prevLed[i] > 0) {
+        // LED padam → henti bunyi
+        stopSound(i);
+      }
+
+      prevLed[i] = led;
     }
   });
 
   async function toggleConn() {
     lastError = '';
-    unlockAudio();   // unlock AudioContext dengan user gesture
-    if ($connected) { await disconnect(); }
-    else { try { await connect(); } catch(e) { lastError = e.message; } }
+    unlockAudio();
+    if ($connected) {
+      stopSound(0); stopSound(1);
+      await disconnect();
+    } else {
+      try { await connect(); } catch(e) { lastError = e.message; }
+    }
+  }
+
+  function toggleAudio() {
+    unlockAudio();
+    audioEnabled = !audioEnabled;
+    if (!audioEnabled) { stopSound(0); stopSound(1); }
   }
 
   let panelH = 340;
@@ -82,7 +106,7 @@
       <button
         class="text-xs px-3 py-1.5 rounded-md font-bold ring-1 transition-opacity
           {audioEnabled ? 'bg-violet-950 text-violet-400 ring-violet-900' : 'bg-slate-800 text-slate-500 ring-slate-700'}"
-        on:click={() => { unlockAudio(); audioEnabled = !audioEnabled; }}
+        on:click={toggleAudio}
         title="Toggle suara drum"
       >{audioEnabled ? '🔊 Audio' : '🔇 Mute'}</button>
 
