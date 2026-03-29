@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body {
+    background-color: #080b12;
+    color: #cbd5e1;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+    margin: 0;
+  }
+  button { cursor: pointer; font-family: inherit; }
+}
+
+@layer components {
+  .btn {
+    @apply px-3 py-1.5 rounded-md text-xs font-bold border-0 transition-opacity whitespace-nowrap;
+  }
+  .btn:hover  { @apply opacity-80; }
+  .btn:disabled { @apply opacity-30 cursor-not-allowed; }
+  .btn-connect    { @apply btn bg-cyan-950 text-cyan-400 ring-1 ring-cyan-900; }
+  .btn-disconnect { @apply btn bg-red-950  text-red-400  ring-1 ring-red-900;  }
+  .btn-green      { @apply btn bg-green-950 text-green-400 ring-1 ring-green-900; }
+  .btn-gray       { @apply btn bg-slate-800 text-slate-400; }
+  .card           { @apply bg-slate-900 border border-slate-800 rounded-xl; }
+  .tab-item {
+    @apply flex items-center gap-1 px-3 py-2 text-xs font-semibold
+           bg-transparent border-0 border-b-2 border-transparent
+           text-slate-600 cursor-pointer transition-all rounded-t;
+  }
+  .tab-item:hover  { @apply text-slate-400; }
+  .tab-item.active { @apply text-cyan-400 border-cyan-400; }
+}
