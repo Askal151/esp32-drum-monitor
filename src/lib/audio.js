@@ -550,215 +550,317 @@ export function scheduleSynth(freq, time, velocity = 0.8, duration = 0.25) {
 }
 
 // ── Tagading Batak ─────────────────────────────────────────────
+// Taganing = set 5 drum berpitih kayu kulit kerbau
+// Setiap drum ada pitch tersendiri (melody drum)
+// Bunyi: "tok" kayu + sustain pitched + kulit tipis
 
-/** Taganing — drum utama tagading, bunyi mid-pitched (~240→120 Hz) */
+/** Taganing — drum berpitih utama tagading set
+ *  Pitch ~300Hz (drum ketiga/tengah dari set 5 drum)
+ *  Bunyi organik: tok kayu keras + tubuh resonans + sedikit sustain pitched
+ */
 export function scheduleTaganing(time, velocity = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
   const master = ac.createGain();
-  master.gain.setValueAtTime(vel * 0.75, time);
-  master.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
   master.connect(ac.destination);
 
-  // Body tone — pitch sweep
-  const osc = ac.createOscillator();
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(240, time);
-  osc.frequency.exponentialRampToValueAtTime(120, time + 0.15);
-  const lp = ac.createBiquadFilter();
-  lp.type = 'lowpass'; lp.frequency.value = 700;
-  osc.connect(lp); lp.connect(master);
+  // ── Layer 1: "Tok" kayu — transient utama ──
+  // Osilator bersegi pendek dengan sweep cepat (kesan mallet kayu)
+  const tok = ac.createOscillator();
+  tok.type = 'square';
+  tok.frequency.setValueAtTime(680, time);
+  tok.frequency.exponentialRampToValueAtTime(280, time + 0.018);
+  const tokLp = ac.createBiquadFilter();
+  tokLp.type = 'lowpass'; tokLp.frequency.value = 1200; tokLp.Q.value = 1.5;
+  const tokG = ac.createGain();
+  tokG.gain.setValueAtTime(vel * 0.65, time);
+  tokG.gain.exponentialRampToValueAtTime(0.001, time + 0.025);
+  tok.connect(tokLp); tokLp.connect(tokG); tokG.connect(master);
 
-  // Transient knok
-  const click = ac.createOscillator();
-  click.type = 'square';
-  click.frequency.setValueAtTime(900, time);
-  click.frequency.exponentialRampToValueAtTime(200, time + 0.022);
-  const cg = ac.createGain();
-  cg.gain.setValueAtTime(vel * 0.3, time);
-  cg.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
-  click.connect(cg); cg.connect(master);
+  // ── Layer 2: Tubuh resonans pitched ──
+  // Drum taganing ada pitch jelas — sine dengan decay panjang sedikit
+  const body = ac.createOscillator();
+  body.type = 'sine';
+  body.frequency.setValueAtTime(310, time);          // pitch drum tengah set
+  body.frequency.exponentialRampToValueAtTime(295, time + 0.06); // settle
+  const bodyG = ac.createGain();
+  bodyG.gain.setValueAtTime(vel * 0.55, time);
+  bodyG.gain.exponentialRampToValueAtTime(0.001, time + 0.55);  // sustain pitched
+  body.connect(bodyG); bodyG.connect(master);
 
-  // Noise kulit
-  const size  = Math.floor(ac.sampleRate * 0.1);
-  const nbuf  = ac.createBuffer(1, size, ac.sampleRate);
-  const nd    = nbuf.getChannelData(0);
-  for (let i = 0; i < size; i++) nd[i] = Math.random() * 2 - 1;
-  const noise = ac.createBufferSource();
-  noise.buffer = nbuf;
-  const bp  = ac.createBiquadFilter();
-  bp.type   = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.9;
-  const ng  = ac.createGain();
-  ng.gain.setValueAtTime(vel * 0.28, time);
-  ng.gain.exponentialRampToValueAtTime(0.001, time + 0.09);
-  noise.connect(bp); bp.connect(ng); ng.connect(master);
+  // Harmonik ke-2 (kayu resonat)
+  const body2 = ac.createOscillator();
+  body2.type = 'sine';
+  body2.frequency.value = 620;
+  const body2G = ac.createGain();
+  body2G.gain.setValueAtTime(vel * 0.18, time);
+  body2G.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+  body2.connect(body2G); body2G.connect(master);
 
-  osc.start(time);   osc.stop(time + 0.32);
-  click.start(time); click.stop(time + 0.035);
-  noise.start(time); noise.stop(time + 0.1);
+  // ── Layer 3: Kulit tipis — sedikit noise kulit ──
+  const skinSize = Math.floor(ac.sampleRate * 0.06);
+  const skinBuf  = ac.createBuffer(1, skinSize, ac.sampleRate);
+  const skinD    = skinBuf.getChannelData(0);
+  for (let i = 0; i < skinSize; i++) skinD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (skinSize * 0.25));
+  const skin = ac.createBufferSource();
+  skin.buffer = skinBuf;
+  const skinBp = ac.createBiquadFilter();
+  skinBp.type = 'bandpass'; skinBp.frequency.value = 900; skinBp.Q.value = 1.2;
+  const skinG = ac.createGain();
+  skinG.gain.setValueAtTime(vel * 0.22, time);
+  skinG.gain.exponentialRampToValueAtTime(0.001, time + 0.065);
+  skin.connect(skinBp); skinBp.connect(skinG); skinG.connect(master);
+
+  // ── Sedikit ruang akustik ──
+  const { reverb } = getSynthChain(ac);
+  const rvSend = ac.createGain(); rvSend.gain.value = 0.12;
+  bodyG.connect(rvSend); rvSend.connect(reverb);
+
+  tok.start(time);   tok.stop(time + 0.03);
+  body.start(time);  body.stop(time + 0.58);
+  body2.start(time); body2.stop(time + 0.2);
+  skin.start(time);  skin.stop(time + 0.07);
 }
 
-/** Odap — drum pengiring, mid-low (~110→60 Hz) */
+/** Odap — drum pengiring lebih kecil, bunyi lebih kering & pendek */
 export function scheduleOdap(time, velocity = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
   const master = ac.createGain();
-  master.gain.setValueAtTime(vel * 0.82, time);
-  master.gain.exponentialRampToValueAtTime(0.001, time + 0.26);
   master.connect(ac.destination);
 
-  const osc = ac.createOscillator();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(115, time);
-  osc.frequency.exponentialRampToValueAtTime(58, time + 0.15);
+  // Tok kayu lebih kecil
+  const tok = ac.createOscillator();
+  tok.type = 'square';
+  tok.frequency.setValueAtTime(520, time);
+  tok.frequency.exponentialRampToValueAtTime(210, time + 0.014);
+  const tokG = ac.createGain();
+  tokG.gain.setValueAtTime(vel * 0.5, time);
+  tokG.gain.exponentialRampToValueAtTime(0.001, time + 0.02);
+  const tokLp = ac.createBiquadFilter();
+  tokLp.type = 'lowpass'; tokLp.frequency.value = 900;
+  tok.connect(tokLp); tokLp.connect(tokG); tokG.connect(master);
 
-  const lp   = ac.createBiquadFilter();
-  lp.type    = 'lowpass'; lp.frequency.value = 280;
-  const dist = ac.createWaveShaper();
-  dist.curve = makeDistCurve(50);
+  // Body pitched rendah (drum lebih kecil = pitch lebih tinggi ~400Hz)
+  const body = ac.createOscillator();
+  body.type = 'sine';
+  body.frequency.setValueAtTime(420, time);
+  body.frequency.exponentialRampToValueAtTime(400, time + 0.04);
+  const bodyG = ac.createGain();
+  bodyG.gain.setValueAtTime(vel * 0.45, time);
+  bodyG.gain.exponentialRampToValueAtTime(0.001, time + 0.28);
+  body.connect(bodyG); bodyG.connect(master);
 
-  osc.connect(dist); dist.connect(lp); lp.connect(master);
-  osc.start(time); osc.stop(time + 0.28);
+  tok.start(time);  tok.stop(time + 0.022);
+  body.start(time); body.stop(time + 0.3);
 }
 
-/** Hesek — perkusi logam kecil, bunyi metalik singkat */
+/** Hesek — instrumen perkusi logam (seperti gong kecil/simbal Batak) */
 export function scheduleHesek(time, velocity = 0.6) {
   const ac  = getCtx();
   const vel = Math.max(0.05, Math.min(1.0, velocity));
-  const dur = 0.045;
 
-  for (let i = 0; i < 2; i++) {
-    const t    = time + i * 0.011;
-    const size = Math.floor(ac.sampleRate * 0.05);
-    const buf  = ac.createBuffer(1, size, ac.sampleRate);
-    const d    = buf.getChannelData(0);
-    for (let j = 0; j < size; j++) d[j] = Math.random() * 2 - 1;
-    const noise = ac.createBufferSource();
-    noise.buffer = buf;
-    const hp = ac.createBiquadFilter();
-    hp.type  = 'highpass'; hp.frequency.value = 8000 + i * 2200;
-    const g  = ac.createGain();
-    g.gain.setValueAtTime(vel * (i === 0 ? 0.5 : 0.28), t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  // Bunyi metalik: campuran frekuensi tidak harmonik (gong karakter)
+  const freqs    = [3200, 4750, 6800, 9200];  // rasio tidak harmonik → metalik
+  const decays   = [0.12, 0.08, 0.05, 0.03];
+  const amps     = [0.35, 0.25, 0.18, 0.12];
+
+  for (let i = 0; i < freqs.length; i++) {
+    const osc = ac.createOscillator();
+    osc.type  = 'sine';
+    osc.frequency.value = freqs[i];
+    const g   = ac.createGain();
+    g.gain.setValueAtTime(vel * amps[i], time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + decays[i]);
     g.connect(ac.destination);
-    noise.connect(hp); hp.connect(g);
-    noise.start(t); noise.stop(t + dur + 0.01);
+    osc.connect(g);
+    osc.start(time); osc.stop(time + decays[i] + 0.01);
   }
 
-  const ring = ac.createOscillator();
-  ring.type  = 'square'; ring.frequency.value = 6200;
-  const rg   = ac.createGain();
-  rg.gain.setValueAtTime(vel * 0.14, time);
-  rg.gain.exponentialRampToValueAtTime(0.001, time + 0.032);
-  rg.connect(ac.destination);
-  ring.connect(rg);
-  ring.start(time); ring.stop(time + 0.036);
+  // Noise pukulan pendek
+  const nSize = Math.floor(ac.sampleRate * 0.012);
+  const nBuf  = ac.createBuffer(1, nSize, ac.sampleRate);
+  const nD    = nBuf.getChannelData(0);
+  for (let i = 0; i < nSize; i++) nD[i] = (Math.random() * 2 - 1) * (1 - i / nSize);
+  const noise = ac.createBufferSource();
+  noise.buffer = nBuf;
+  const nhp = ac.createBiquadFilter();
+  nhp.type  = 'highpass'; nhp.frequency.value = 5000;
+  const ng  = ac.createGain();
+  ng.gain.setValueAtTime(vel * 0.3, time);
+  ng.gain.exponentialRampToValueAtTime(0.001, time + 0.018);
+  ng.connect(ac.destination);
+  noise.connect(nhp); nhp.connect(ng);
+  noise.start(time); noise.stop(time + 0.015);
 }
 
-/** Gordang — gendang besar seremonial, sangat dalam (~80→38 Hz) */
+/** Gordang — gendang besar seremonial Batak, bunyi booming dalam */
 export function scheduleGordang(time, velocity = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
   const master = ac.createGain();
-  master.gain.setValueAtTime(vel * 0.95, time);
-  master.gain.exponentialRampToValueAtTime(0.001, time + 0.8);
   master.connect(ac.destination);
 
-  // Bunyi utama
-  const osc = ac.createOscillator();
-  osc.type  = 'sine';
-  osc.frequency.setValueAtTime(82, time);
-  osc.frequency.exponentialRampToValueAtTime(36, time + 0.42);
+  // Sub boom utama — sangat dalam
+  const sub = ac.createOscillator();
+  sub.type  = 'sine';
+  sub.frequency.setValueAtTime(95, time);
+  sub.frequency.exponentialRampToValueAtTime(42, time + 0.5);
+  const subG = ac.createGain();
+  subG.gain.setValueAtTime(vel * 0.9, time);
+  subG.gain.exponentialRampToValueAtTime(0.001, time + 0.75);
+  const subLp = ac.createBiquadFilter();
+  subLp.type  = 'lowpass'; subLp.frequency.value = 160;
+  const subDist = ac.createWaveShaper();
+  subDist.curve = makeDistCurve(80);
+  sub.connect(subDist); subDist.connect(subLp); subLp.connect(subG); subG.connect(master);
 
-  // Sub harmonik
-  const sub  = ac.createOscillator();
-  sub.type   = 'sine';
-  sub.frequency.setValueAtTime(41, time);
-  sub.frequency.exponentialRampToValueAtTime(20, time + 0.5);
-  const subG = ac.createGain(); subG.gain.value = 0.48;
+  // Pukulan — transient keras kayu mallet pada kulit
+  const punch = ac.createOscillator();
+  punch.type  = 'triangle';
+  punch.frequency.setValueAtTime(200, time);
+  punch.frequency.exponentialRampToValueAtTime(60, time + 0.04);
+  const punchG = ac.createGain();
+  punchG.gain.setValueAtTime(vel * 0.7, time);
+  punchG.gain.exponentialRampToValueAtTime(0.001, time + 0.055);
+  punch.connect(punchG); punchG.connect(master);
 
-  // Pukulan keras
-  const click = ac.createOscillator();
-  click.type  = 'square';
-  click.frequency.setValueAtTime(620, time);
-  click.frequency.exponentialRampToValueAtTime(80, time + 0.04);
-  const cg = ac.createGain();
-  cg.gain.setValueAtTime(vel * 0.42, time);
-  cg.gain.exponentialRampToValueAtTime(0.001, time + 0.052);
+  // Kulit — noise rendah singkat
+  const skinSz = Math.floor(ac.sampleRate * 0.08);
+  const skinBuf = ac.createBuffer(1, skinSz, ac.sampleRate);
+  const skinD   = skinBuf.getChannelData(0);
+  for (let i = 0; i < skinSz; i++) skinD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (skinSz * 0.3));
+  const skin = ac.createBufferSource();
+  skin.buffer = skinBuf;
+  const skinLp = ac.createBiquadFilter();
+  skinLp.type  = 'lowpass'; skinLp.frequency.value = 400;
+  const skinG  = ac.createGain();
+  skinG.gain.setValueAtTime(vel * 0.35, time);
+  skinG.gain.exponentialRampToValueAtTime(0.001, time + 0.09);
+  skin.connect(skinLp); skinLp.connect(skinG); skinG.connect(master);
 
-  const lp   = ac.createBiquadFilter();
-  lp.type    = 'lowpass'; lp.frequency.value = 140;
-  const dist = ac.createWaveShaper();
-  dist.curve = makeDistCurve(100);
-
-  osc.connect(dist); dist.connect(lp); lp.connect(master);
-  sub.connect(subG); subG.connect(master);
-  click.connect(cg); cg.connect(master);
-
-  osc.start(time);   osc.stop(time + 0.85);
-  sub.start(time);   sub.stop(time + 0.56);
-  click.start(time); click.stop(time + 0.055);
+  sub.start(time);   sub.stop(time + 0.8);
+  punch.start(time); punch.stop(time + 0.06);
+  skin.start(time);  skin.stop(time + 0.09);
 }
 
 // ── Hasapi Batak ───────────────────────────────────────────────
+// Hasapi = kecapi 2-dawai kayu Batak Toba
+// Bunyi: petikan twangy bright + resonans kotak kayu + sustain sederhana
+// Karakter: attack tajam, bright, sedikit metalik, pelahan fade
 
-/** Hasapi — kecapi 2-dawai Batak, bunyi petikan dawai */
+/** Hasapi — petikan kecapi 2-dawai Batak, synthesis additive organic */
 export function scheduleHasapi(freq, time, velocity = 0.8) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
-  const dur = 0.55;
 
   const master = ac.createGain();
-  master.gain.setValueAtTime(0, time);
-  master.gain.linearRampToValueAtTime(vel * 0.55, time + 0.005);
-  master.gain.setValueAtTime(vel * 0.55, time + 0.006);
-  master.gain.exponentialRampToValueAtTime(0.001, time + dur);
+  master.gain.setValueAtTime(1, time);
   master.connect(ac.destination);
 
-  // Bunyi petik (noise burst singkat → karakter pluck)
-  const size  = Math.floor(ac.sampleRate * 0.018);
-  const nbuf  = ac.createBuffer(1, size, ac.sampleRate);
-  const nd    = nbuf.getChannelData(0);
-  for (let i = 0; i < size; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / size);
-  const noise = ac.createBufferSource();
-  noise.buffer = nbuf;
-  const lp   = ac.createBiquadFilter();
-  lp.type    = 'lowpass';
-  lp.frequency.setValueAtTime(freq * 9, time);
-  lp.frequency.exponentialRampToValueAtTime(freq * 2.5, time + 0.04);
-  lp.Q.value = 2.2;
-  noise.connect(lp); lp.connect(master);
+  // ── Simulasi 2 dawai (sedikit detune antara satu sama lain) ──
+  // Dawai 1 (pitch asas)
+  const d1f0 = ac.createOscillator(); d1f0.type = 'triangle';
+  const d1f1 = ac.createOscillator(); d1f1.type = 'sine';
+  const d1f2 = ac.createOscillator(); d1f2.type = 'sine';
+  const d1f3 = ac.createOscillator(); d1f3.type = 'sine';
 
-  // Nada fundamental
-  const osc  = ac.createOscillator();
-  osc.type   = 'triangle';
-  osc.frequency.value = freq;
-  const og   = ac.createGain();
-  og.gain.setValueAtTime(vel * 0.45, time);
-  og.gain.exponentialRampToValueAtTime(0.001, time + dur * 0.55);
-  osc.connect(og); og.connect(master);
+  // Dawai 2 (detune +5 cent → chorus dawai)
+  const detune = freq * 1.0029;  // ~5 cent
+  const d2f0 = ac.createOscillator(); d2f0.type = 'triangle';
+  const d2f1 = ac.createOscillator(); d2f1.type = 'sine';
 
-  // Harmonik ke-2 (bunyi dawai)
-  const osc2 = ac.createOscillator();
-  osc2.type  = 'sine';
-  osc2.frequency.value = freq * 2;
-  const og2  = ac.createGain();
-  og2.gain.setValueAtTime(vel * 0.18, time);
-  og2.gain.exponentialRampToValueAtTime(0.001, time + dur * 0.3);
-  osc2.connect(og2); og2.connect(master);
+  // Semua harmonik dengan frekuensi
+  d1f0.frequency.value = freq;
+  d1f1.frequency.value = freq * 2;
+  d1f2.frequency.value = freq * 3;
+  d1f3.frequency.value = freq * 4.02;  // sedikit inharmonik → twang
+  d2f0.frequency.value = detune;
+  d2f1.frequency.value = detune * 2;
 
-  // Sedikit reverb
+  // ── Pitch "twang" — naik 1.5% lalu turun ke pitch asas ──
+  const t_settle = 0.035;
+  [d1f0, d2f0].forEach(o => {
+    const f = o === d1f0 ? freq : detune;
+    o.frequency.setValueAtTime(f * 1.015, time);
+    o.frequency.exponentialRampToValueAtTime(f, time + t_settle);
+  });
+
+  // ── Envelope setiap harmonik ──
+  // Fundamental: paling lama
+  const g0 = ac.createGain();
+  g0.gain.setValueAtTime(vel * 0.38, time);
+  g0.gain.exponentialRampToValueAtTime(0.001, time + 1.4);
+
+  // Oktaf: pertengahan
+  const g1 = ac.createGain();
+  g1.gain.setValueAtTime(vel * 0.22, time);
+  g1.gain.exponentialRampToValueAtTime(0.001, time + 0.65);
+
+  // 3rd harmonik: pendek
+  const g2 = ac.createGain();
+  g2.gain.setValueAtTime(vel * 0.12, time);
+  g2.gain.exponentialRampToValueAtTime(0.001, time + 0.28);
+
+  // 4th harmonik: sangat pendek (twang click)
+  const g3 = ac.createGain();
+  g3.gain.setValueAtTime(vel * 0.08, time);
+  g3.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
+
+  // Dawai 2 harmonik
+  const gd2f0 = ac.createGain();
+  gd2f0.gain.setValueAtTime(vel * 0.28, time);
+  gd2f0.gain.exponentialRampToValueAtTime(0.001, time + 1.3);
+  const gd2f1 = ac.createGain();
+  gd2f1.gain.setValueAtTime(vel * 0.16, time);
+  gd2f1.gain.exponentialRampToValueAtTime(0.001, time + 0.55);
+
+  d1f0.connect(g0); g0.connect(master);
+  d1f1.connect(g1); g1.connect(master);
+  d1f2.connect(g2); g2.connect(master);
+  d1f3.connect(g3); g3.connect(master);
+  d2f0.connect(gd2f0); gd2f0.connect(master);
+  d2f1.connect(gd2f1); gd2f1.connect(master);
+
+  // ── Petikan (pluck) transient — noise burst 8ms ──
+  const nSz  = Math.floor(ac.sampleRate * 0.008);
+  const nBuf = ac.createBuffer(1, nSz, ac.sampleRate);
+  const nD   = nBuf.getChannelData(0);
+  for (let i = 0; i < nSz; i++) nD[i] = (Math.random() * 2 - 1) * (1 - i / nSz);
+  const pluck = ac.createBufferSource();
+  pluck.buffer = nBuf;
+  const pluckBp = ac.createBiquadFilter();
+  pluckBp.type  = 'bandpass'; pluckBp.frequency.value = freq * 3.5; pluckBp.Q.value = 1.8;
+  const pluckG  = ac.createGain();
+  pluckG.gain.setValueAtTime(vel * 0.55, time);
+  pluckG.gain.exponentialRampToValueAtTime(0.001, time + 0.012);
+  pluck.connect(pluckBp); pluckBp.connect(pluckG); pluckG.connect(master);
+
+  // ── Resonans kotak kayu (body filter) ──
+  const bodyFilter = ac.createBiquadFilter();
+  bodyFilter.type      = 'peaking';
+  bodyFilter.frequency.value = freq * 2.8;
+  bodyFilter.Q.value   = 3.5;
+  bodyFilter.gain.value = 5;
+  master.connect(bodyFilter); bodyFilter.connect(ac.destination);
+
+  // ── Reverb ruang kecil (kotak kayu) ──
   const { reverb } = getSynthChain(ac);
-  const revSend = ac.createGain(); revSend.gain.value = 0.18;
-  osc.connect(revSend); revSend.connect(reverb);
+  const rvG = ac.createGain(); rvG.gain.value = 0.22;
+  master.connect(rvG); rvG.connect(reverb);
 
-  const stopAt = time + dur + 0.04;
-  noise.start(time); noise.stop(time + 0.022);
-  osc.start(time);   osc.stop(stopAt);
-  osc2.start(time);  osc2.stop(time + dur * 0.35);
+  const stop1 = time + 1.45;
+  const stop2 = time + 0.58;
+  pluck.start(time); pluck.stop(time + 0.01);
+  d1f0.start(time);  d1f0.stop(stop1);
+  d2f0.start(time);  d2f0.stop(stop1);
+  d1f1.start(time);  d1f1.stop(stop2);
+  d2f1.start(time);  d2f1.stop(stop2);
+  d1f2.start(time);  d1f2.stop(time + 0.3);
+  d1f3.start(time);  d1f3.stop(time + 0.14);
 }
 
 function makeDistCurve(amount) {
