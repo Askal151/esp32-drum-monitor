@@ -10,16 +10,16 @@
     connect, disconnect, sendCmd
   } from './lib/serial.js';
 
-  const CLR   = ['#22d3ee', '#4ade80'];
-  const NAMES = ['SNARE', 'KICK'];
+  const CLR   = ['#22d3ee', '#4ade80', '#f59e0b', '#f472b6'];
+  const NAMES = ['SNARE', 'KICK', 'TOM', 'HI-HAT'];
 
   let tab = 'drum';
   let lastError   = '';
   let audioReady  = false;
   let audioEnabled = true;
-  let hits = [0, 0];
-  let bpm  = [0, 0];
-  const hitTimes = [[], []];
+  let hits = [0, 0, 0, 0];
+  let bpm  = [0, 0, 0, 0];
+  const hitTimes = [[], [], [], []];
 
   import { hitEvent } from './lib/serial.js';
 
@@ -129,7 +129,7 @@
       <div class="card p-4">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
-            {i === 0 ? '🥁 SEQUENCER' : '🎹 SYNTH'}
+            {i === 0 ? '🥁 SEQUENCER' : i === 1 ? '🎹 SYNTH' : i === 2 ? '🪘 TOM' : '🎵 HI-HAT'}
           </span>
         </div>
         <DrumPad
