@@ -549,6 +549,218 @@ export function scheduleSynth(freq, time, velocity = 0.8, duration = 0.25) {
   sub.start(time);  sub.stop(stopAt);
 }
 
+// ── Tagading Batak ─────────────────────────────────────────────
+
+/** Taganing — drum utama tagading, bunyi mid-pitched (~240→120 Hz) */
+export function scheduleTaganing(time, velocity = 1.0) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(vel * 0.75, time);
+  master.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+  master.connect(ac.destination);
+
+  // Body tone — pitch sweep
+  const osc = ac.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(240, time);
+  osc.frequency.exponentialRampToValueAtTime(120, time + 0.15);
+  const lp = ac.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 700;
+  osc.connect(lp); lp.connect(master);
+
+  // Transient knok
+  const click = ac.createOscillator();
+  click.type = 'square';
+  click.frequency.setValueAtTime(900, time);
+  click.frequency.exponentialRampToValueAtTime(200, time + 0.022);
+  const cg = ac.createGain();
+  cg.gain.setValueAtTime(vel * 0.3, time);
+  cg.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
+  click.connect(cg); cg.connect(master);
+
+  // Noise kulit
+  const size  = Math.floor(ac.sampleRate * 0.1);
+  const nbuf  = ac.createBuffer(1, size, ac.sampleRate);
+  const nd    = nbuf.getChannelData(0);
+  for (let i = 0; i < size; i++) nd[i] = Math.random() * 2 - 1;
+  const noise = ac.createBufferSource();
+  noise.buffer = nbuf;
+  const bp  = ac.createBiquadFilter();
+  bp.type   = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.9;
+  const ng  = ac.createGain();
+  ng.gain.setValueAtTime(vel * 0.28, time);
+  ng.gain.exponentialRampToValueAtTime(0.001, time + 0.09);
+  noise.connect(bp); bp.connect(ng); ng.connect(master);
+
+  osc.start(time);   osc.stop(time + 0.32);
+  click.start(time); click.stop(time + 0.035);
+  noise.start(time); noise.stop(time + 0.1);
+}
+
+/** Odap — drum pengiring, mid-low (~110→60 Hz) */
+export function scheduleOdap(time, velocity = 1.0) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(vel * 0.82, time);
+  master.gain.exponentialRampToValueAtTime(0.001, time + 0.26);
+  master.connect(ac.destination);
+
+  const osc = ac.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(115, time);
+  osc.frequency.exponentialRampToValueAtTime(58, time + 0.15);
+
+  const lp   = ac.createBiquadFilter();
+  lp.type    = 'lowpass'; lp.frequency.value = 280;
+  const dist = ac.createWaveShaper();
+  dist.curve = makeDistCurve(50);
+
+  osc.connect(dist); dist.connect(lp); lp.connect(master);
+  osc.start(time); osc.stop(time + 0.28);
+}
+
+/** Hesek — perkusi logam kecil, bunyi metalik singkat */
+export function scheduleHesek(time, velocity = 0.6) {
+  const ac  = getCtx();
+  const vel = Math.max(0.05, Math.min(1.0, velocity));
+  const dur = 0.045;
+
+  for (let i = 0; i < 2; i++) {
+    const t    = time + i * 0.011;
+    const size = Math.floor(ac.sampleRate * 0.05);
+    const buf  = ac.createBuffer(1, size, ac.sampleRate);
+    const d    = buf.getChannelData(0);
+    for (let j = 0; j < size; j++) d[j] = Math.random() * 2 - 1;
+    const noise = ac.createBufferSource();
+    noise.buffer = buf;
+    const hp = ac.createBiquadFilter();
+    hp.type  = 'highpass'; hp.frequency.value = 8000 + i * 2200;
+    const g  = ac.createGain();
+    g.gain.setValueAtTime(vel * (i === 0 ? 0.5 : 0.28), t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    g.connect(ac.destination);
+    noise.connect(hp); hp.connect(g);
+    noise.start(t); noise.stop(t + dur + 0.01);
+  }
+
+  const ring = ac.createOscillator();
+  ring.type  = 'square'; ring.frequency.value = 6200;
+  const rg   = ac.createGain();
+  rg.gain.setValueAtTime(vel * 0.14, time);
+  rg.gain.exponentialRampToValueAtTime(0.001, time + 0.032);
+  rg.connect(ac.destination);
+  ring.connect(rg);
+  ring.start(time); ring.stop(time + 0.036);
+}
+
+/** Gordang — gendang besar seremonial, sangat dalam (~80→38 Hz) */
+export function scheduleGordang(time, velocity = 1.0) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(vel * 0.95, time);
+  master.gain.exponentialRampToValueAtTime(0.001, time + 0.8);
+  master.connect(ac.destination);
+
+  // Bunyi utama
+  const osc = ac.createOscillator();
+  osc.type  = 'sine';
+  osc.frequency.setValueAtTime(82, time);
+  osc.frequency.exponentialRampToValueAtTime(36, time + 0.42);
+
+  // Sub harmonik
+  const sub  = ac.createOscillator();
+  sub.type   = 'sine';
+  sub.frequency.setValueAtTime(41, time);
+  sub.frequency.exponentialRampToValueAtTime(20, time + 0.5);
+  const subG = ac.createGain(); subG.gain.value = 0.48;
+
+  // Pukulan keras
+  const click = ac.createOscillator();
+  click.type  = 'square';
+  click.frequency.setValueAtTime(620, time);
+  click.frequency.exponentialRampToValueAtTime(80, time + 0.04);
+  const cg = ac.createGain();
+  cg.gain.setValueAtTime(vel * 0.42, time);
+  cg.gain.exponentialRampToValueAtTime(0.001, time + 0.052);
+
+  const lp   = ac.createBiquadFilter();
+  lp.type    = 'lowpass'; lp.frequency.value = 140;
+  const dist = ac.createWaveShaper();
+  dist.curve = makeDistCurve(100);
+
+  osc.connect(dist); dist.connect(lp); lp.connect(master);
+  sub.connect(subG); subG.connect(master);
+  click.connect(cg); cg.connect(master);
+
+  osc.start(time);   osc.stop(time + 0.85);
+  sub.start(time);   sub.stop(time + 0.56);
+  click.start(time); click.stop(time + 0.055);
+}
+
+// ── Hasapi Batak ───────────────────────────────────────────────
+
+/** Hasapi — kecapi 2-dawai Batak, bunyi petikan dawai */
+export function scheduleHasapi(freq, time, velocity = 0.8) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  const dur = 0.55;
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(0, time);
+  master.gain.linearRampToValueAtTime(vel * 0.55, time + 0.005);
+  master.gain.setValueAtTime(vel * 0.55, time + 0.006);
+  master.gain.exponentialRampToValueAtTime(0.001, time + dur);
+  master.connect(ac.destination);
+
+  // Bunyi petik (noise burst singkat → karakter pluck)
+  const size  = Math.floor(ac.sampleRate * 0.018);
+  const nbuf  = ac.createBuffer(1, size, ac.sampleRate);
+  const nd    = nbuf.getChannelData(0);
+  for (let i = 0; i < size; i++) nd[i] = (Math.random() * 2 - 1) * (1 - i / size);
+  const noise = ac.createBufferSource();
+  noise.buffer = nbuf;
+  const lp   = ac.createBiquadFilter();
+  lp.type    = 'lowpass';
+  lp.frequency.setValueAtTime(freq * 9, time);
+  lp.frequency.exponentialRampToValueAtTime(freq * 2.5, time + 0.04);
+  lp.Q.value = 2.2;
+  noise.connect(lp); lp.connect(master);
+
+  // Nada fundamental
+  const osc  = ac.createOscillator();
+  osc.type   = 'triangle';
+  osc.frequency.value = freq;
+  const og   = ac.createGain();
+  og.gain.setValueAtTime(vel * 0.45, time);
+  og.gain.exponentialRampToValueAtTime(0.001, time + dur * 0.55);
+  osc.connect(og); og.connect(master);
+
+  // Harmonik ke-2 (bunyi dawai)
+  const osc2 = ac.createOscillator();
+  osc2.type  = 'sine';
+  osc2.frequency.value = freq * 2;
+  const og2  = ac.createGain();
+  og2.gain.setValueAtTime(vel * 0.18, time);
+  og2.gain.exponentialRampToValueAtTime(0.001, time + dur * 0.3);
+  osc2.connect(og2); og2.connect(master);
+
+  // Sedikit reverb
+  const { reverb } = getSynthChain(ac);
+  const revSend = ac.createGain(); revSend.gain.value = 0.18;
+  osc.connect(revSend); revSend.connect(reverb);
+
+  const stopAt = time + dur + 0.04;
+  noise.start(time); noise.stop(time + 0.022);
+  osc.start(time);   osc.stop(stopAt);
+  osc2.start(time);  osc2.stop(time + dur * 0.35);
+}
+
 function makeDistCurve(amount) {
   const n = 256, curve = new Float32Array(n);
   for (let i = 0; i < n; i++) {

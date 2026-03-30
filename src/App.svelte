@@ -2,8 +2,10 @@
   import DrumPad        from './lib/DrumPad.svelte';
   import Waveform       from './lib/Waveform.svelte';
   import SerialMonitor  from './lib/SerialMonitor.svelte';
-  import BeatSequencer  from './lib/BeatSequencer.svelte';
-  import SynthSequencer from './lib/SynthSequencer.svelte';
+  import BeatSequencer     from './lib/BeatSequencer.svelte';
+  import SynthSequencer    from './lib/SynthSequencer.svelte';
+  import TagadingSequencer from './lib/TagadingSequencer.svelte';
+  import HasapiSequencer   from './lib/HasapiSequencer.svelte';
   import { unlockAudio, isRunning } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount,
@@ -164,14 +166,20 @@
         <Waveform />
       </div>
 
-      <!-- Sequencer — drum + synth stacked, always mounted -->
+      <!-- Sequencer — 4 sequencer stacked, always mounted -->
       <div class="absolute inset-0 overflow-y-auto flex flex-col gap-px"
            style="display:{tab==='sequencer' ? 'flex' : 'none'}">
-        <div style="height:330px; flex:none">
+        <div style="height:310px; flex:none">
           <BeatSequencer />
         </div>
-        <div class="border-t border-slate-800" style="height:260px; flex:none">
+        <div class="border-t border-slate-800" style="height:250px; flex:none">
           <SynthSequencer />
+        </div>
+        <div class="border-t-2 border-amber-900" style="height:290px; flex:none">
+          <TagadingSequencer />
+        </div>
+        <div class="border-t-2 border-pink-900" style="height:280px; flex:none">
+          <HasapiSequencer />
         </div>
       </div>
 
