@@ -9,6 +9,7 @@
     scheduleTaganing, scheduleOdap, scheduleHesek, scheduleGordang,
     getAudioCtx, ensureRunning
   } from './audio.js';
+  import { sensors } from './serial.js';
 
   const STEPS = 16;
   const TRACKS = [
@@ -58,6 +59,15 @@
   let curStep    = -1;
   let selPreset  = 'Sidabu Petek';
   let vels       = TRACKS.map(() => 0.8);
+  let sensorMode = true;
+
+  // Sensor 3 (idx=2, Tom) → auto start/stop Tagading
+  const unsubSensor = sensors.subscribe(arr => {
+    if (!sensorMode) return;
+    const active = arr[2]?.led > 0;
+    if (active && !playing) start();
+    else if (!active && playing) stop();
+  });
 
   function loadPreset(name) {
     selPreset = name;
@@ -119,7 +129,7 @@
 
   $: if (playing && bpm) { clearTimeout(_timerId); _timerId = setTimeout(scheduler, 0); }
 
-  onDestroy(() => clearTimeout(_timerId));
+  onDestroy(() => { clearTimeout(_timerId); unsubSensor(); });
 </script>
 
 <div class="flex flex-col gap-3 h-full bg-slate-950 rounded-lg p-3 overflow-y-auto">
@@ -159,6 +169,16 @@
         >{name}</button>
       {/each}
     </div>
+
+    <!-- Sensor Mode -->
+    <button
+      class="text-xs px-3 py-1.5 rounded-md font-bold ring-1 transition-all
+        {sensorMode
+          ? 'bg-violet-950 text-violet-300 ring-violet-800'
+          : 'bg-slate-900 text-slate-600 ring-slate-800 hover:text-slate-400'}"
+      on:click={() => { sensorMode = !sensorMode; if (!sensorMode) stop(); }}
+      title="Sensor 3 (Tom) trigger Tagading"
+    >🎯 S3 {sensorMode ? 'ON' : 'OFF'}</button>
 
     <button
       class="ml-auto text-xs px-2 py-1 bg-slate-900 border border-slate-800 rounded text-slate-600 hover:text-red-400"
