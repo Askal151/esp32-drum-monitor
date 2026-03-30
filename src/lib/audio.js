@@ -748,119 +748,132 @@ export function scheduleGordang(time, velocity = 1.0) {
 }
 
 // ── Hasapi Batak ───────────────────────────────────────────────
-// Hasapi = kecapi 2-dawai kayu Batak Toba
-// Bunyi: petikan twangy bright + resonans kotak kayu + sustain sederhana
-// Karakter: attack tajam, bright, sedikit metalik, pelahan fade
+// Rujukan akustik: kajian BioResources (Sinin et al., 2024)
+// - Pitch tinggi: sedikit harmonik (hampir sine murni)
+// - Pitch rendah: harmonik lebih kaya
+// - Partials tidak proporsional — jatuh cepat selepas fundamental
+// - Bunyi: bright masa petik, gelap perlahan, resonans kotak kayu jackfruit
+// Teknik synthesis: Sawtooth → LP filter sweep (Karplus-Strong approximation)
 
-/** Hasapi — petikan kecapi 2-dawai Batak, synthesis additive organic */
+/** Hasapi — kecapi 2-dawai Batak Toba, synthesis organik
+ *  Bunyi authentic: petikan bright, sweep bright→dark, resonans kayu warm
+ */
 export function scheduleHasapi(freq, time, velocity = 0.8) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
+  // Volume lebih kuat (hasapi biasanya subtle — kita amplify)
+  const AMP = 1.8;
+
+  // ── Master output chain ──
   const master = ac.createGain();
-  master.gain.setValueAtTime(1, time);
-  master.connect(ac.destination);
+  master.gain.setValueAtTime(vel * AMP, time);
 
-  // ── Simulasi 2 dawai (sedikit detune antara satu sama lain) ──
-  // Dawai 1 (pitch asas)
-  const d1f0 = ac.createOscillator(); d1f0.type = 'triangle';
-  const d1f1 = ac.createOscillator(); d1f1.type = 'sine';
-  const d1f2 = ac.createOscillator(); d1f2.type = 'sine';
-  const d1f3 = ac.createOscillator(); d1f3.type = 'sine';
+  // Body EQ: resonans kotak kayu jackfruit (~240-280Hz warm peak)
+  const bodyEQ = ac.createBiquadFilter();
+  bodyEQ.type          = 'peaking';
+  bodyEQ.frequency.value = 255;
+  bodyEQ.Q.value       = 2.8;
+  bodyEQ.gain.value    = 7;   // tambah warmth kayu
 
-  // Dawai 2 (detune +5 cent → chorus dawai)
-  const detune = freq * 1.0029;  // ~5 cent
-  const d2f0 = ac.createOscillator(); d2f0.type = 'triangle';
-  const d2f1 = ac.createOscillator(); d2f1.type = 'sine';
+  master.connect(bodyEQ);
+  bodyEQ.connect(ac.destination);
 
-  // Semua harmonik dengan frekuensi
-  d1f0.frequency.value = freq;
-  d1f1.frequency.value = freq * 2;
-  d1f2.frequency.value = freq * 3;
-  d1f3.frequency.value = freq * 4.02;  // sedikit inharmonik → twang
-  d2f0.frequency.value = detune;
-  d2f1.frequency.value = detune * 2;
+  // Reverb kecil — bilik akustik kecil (kotak kayu resonat)
+  const { reverb } = getSynthChain(ac);
+  const rvG = ac.createGain(); rvG.gain.value = 0.20;
+  master.connect(rvG); rvG.connect(reverb);
 
-  // ── Pitch "twang" — naik 1.5% lalu turun ke pitch asas ──
-  const t_settle = 0.035;
-  [d1f0, d2f0].forEach(o => {
-    const f = o === d1f0 ? freq : detune;
-    o.frequency.setValueAtTime(f * 1.015, time);
-    o.frequency.exponentialRampToValueAtTime(f, time + t_settle);
-  });
+  // ── KUNCI bunyi plucked string: Sawtooth → Sweeping LP Filter ──
+  // Sawtooth = kaya harmonik → LP filter yang turun perlahan =
+  // simulasi cara harmonik tinggi mati dahulu selepas petikan (Karplus-Strong)
+  //
+  // Pitch tinggi → LP cutoff lebih rendah (kurang harmonik — sesuai kajian hasapi)
+  // Pitch rendah → LP cutoff lebih tinggi (lebih kaya harmonik)
+  const richFactor = Math.max(3.0, Math.min(14, 4200 / freq));
 
-  // ── Envelope setiap harmonik ──
-  // Fundamental: paling lama
-  const g0 = ac.createGain();
-  g0.gain.setValueAtTime(vel * 0.38, time);
-  g0.gain.exponentialRampToValueAtTime(0.001, time + 1.4);
+  const lpf = ac.createBiquadFilter();
+  lpf.type   = 'lowpass';
+  lpf.Q.value = 2.5;   // sedikit resonans untuk "twang" pada cutoff
+  // Waktu petik: sangat bright (LP terbuka luas)
+  lpf.frequency.setValueAtTime(freq * richFactor * 2.8, time);
+  // 40ms: harmonik tinggi mati cepat
+  lpf.frequency.exponentialRampToValueAtTime(freq * richFactor * 0.9, time + 0.04);
+  // 300ms: terus gelap
+  lpf.frequency.exponentialRampToValueAtTime(freq * 2.0, time + 0.3);
+  // 1.5s: hampir sine sahaja
+  lpf.frequency.exponentialRampToValueAtTime(freq * 1.3, time + 1.5);
 
-  // Oktaf: pertengahan
-  const g1 = ac.createGain();
-  g1.gain.setValueAtTime(vel * 0.22, time);
-  g1.gain.exponentialRampToValueAtTime(0.001, time + 0.65);
+  // ── Dawai 1: pitch asas (sawtooth → LP) ──
+  const osc1 = ac.createOscillator();
+  osc1.type  = 'sawtooth';
+  // Pitch glide +1.8% masa petik lalu balik (simulasi tekanan kuku pada dawai)
+  osc1.frequency.setValueAtTime(freq * 1.018, time);
+  osc1.frequency.exponentialRampToValueAtTime(freq, time + 0.025);
 
-  // 3rd harmonik: pendek
-  const g2 = ac.createGain();
-  g2.gain.setValueAtTime(vel * 0.12, time);
-  g2.gain.exponentialRampToValueAtTime(0.001, time + 0.28);
+  const env1 = ac.createGain();
+  env1.gain.setValueAtTime(0, time);
+  env1.gain.linearRampToValueAtTime(0.72, time + 0.002);  // attack instant
+  env1.gain.exponentialRampToValueAtTime(0.001, time + 2.0);  // decay panjang
 
-  // 4th harmonik: sangat pendek (twang click)
-  const g3 = ac.createGain();
-  g3.gain.setValueAtTime(vel * 0.08, time);
-  g3.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
+  osc1.connect(lpf); lpf.connect(env1); env1.connect(master);
 
-  // Dawai 2 harmonik
-  const gd2f0 = ac.createGain();
-  gd2f0.gain.setValueAtTime(vel * 0.28, time);
-  gd2f0.gain.exponentialRampToValueAtTime(0.001, time + 1.3);
-  const gd2f1 = ac.createGain();
-  gd2f1.gain.setValueAtTime(vel * 0.16, time);
-  gd2f1.gain.exponentialRampToValueAtTime(0.001, time + 0.55);
+  // ── Dawai 2: resonans sympathetik (dawai lain hasapi) ──
+  // Hasapi ada 2 dawai — bila satu dipetik, dawai lain vibrate sympathetically
+  // Tuning: kira-kira 5th di bawah atau 4th atas (bergantung pada lagu)
+  const freq2 = freq * 0.667;  // perfect 4th di bawah (tuning Do-Sol)
+  const osc2  = ac.createOscillator();
+  osc2.type   = 'sine';  // dawai sympathetik = lebih senyap, lebih sine
+  osc2.frequency.value = freq2;
 
-  d1f0.connect(g0); g0.connect(master);
-  d1f1.connect(g1); g1.connect(master);
-  d1f2.connect(g2); g2.connect(master);
-  d1f3.connect(g3); g3.connect(master);
-  d2f0.connect(gd2f0); gd2f0.connect(master);
-  d2f1.connect(gd2f1); gd2f1.connect(master);
+  const lpf2 = ac.createBiquadFilter();
+  lpf2.type  = 'lowpass';
+  lpf2.frequency.setValueAtTime(freq2 * 4, time + 0.01);
+  lpf2.frequency.exponentialRampToValueAtTime(freq2 * 1.8, time + 0.5);
 
-  // ── Petikan (pluck) transient — noise burst 8ms ──
-  const nSz  = Math.floor(ac.sampleRate * 0.008);
+  const env2 = ac.createGain();
+  env2.gain.setValueAtTime(0, time + 0.008);   // delayed sedikit — sympathetic
+  env2.gain.linearRampToValueAtTime(0.18, time + 0.02);
+  env2.gain.exponentialRampToValueAtTime(0.001, time + 1.2);
+
+  osc2.connect(lpf2); lpf2.connect(env2); env2.connect(master);
+
+  // ── Pluck transient: kuku/pick mengenai dawai (5ms) ──
+  const nSz  = Math.floor(ac.sampleRate * 0.005);
   const nBuf = ac.createBuffer(1, nSz, ac.sampleRate);
   const nD   = nBuf.getChannelData(0);
   for (let i = 0; i < nSz; i++) nD[i] = (Math.random() * 2 - 1) * (1 - i / nSz);
-  const pluck = ac.createBufferSource();
+  const pluck  = ac.createBufferSource();
   pluck.buffer = nBuf;
-  const pluckBp = ac.createBiquadFilter();
-  pluckBp.type  = 'bandpass'; pluckBp.frequency.value = freq * 3.5; pluckBp.Q.value = 1.8;
-  const pluckG  = ac.createGain();
-  pluckG.gain.setValueAtTime(vel * 0.55, time);
-  pluckG.gain.exponentialRampToValueAtTime(0.001, time + 0.012);
-  pluck.connect(pluckBp); pluckBp.connect(pluckG); pluckG.connect(master);
+  const plBp   = ac.createBiquadFilter();
+  plBp.type    = 'bandpass';
+  plBp.frequency.value = Math.min(freq * 5, 8000);  // cap di 8kHz
+  plBp.Q.value = 1.6;
+  const plG    = ac.createGain();
+  plG.gain.setValueAtTime(0.5, time);
+  plG.gain.exponentialRampToValueAtTime(0.001, time + 0.007);
+  pluck.connect(plBp); plBp.connect(plG); plG.connect(master);
 
-  // ── Resonans kotak kayu (body filter) ──
-  const bodyFilter = ac.createBiquadFilter();
-  bodyFilter.type      = 'peaking';
-  bodyFilter.frequency.value = freq * 2.8;
-  bodyFilter.Q.value   = 3.5;
-  bodyFilter.gain.value = 5;
-  master.connect(bodyFilter); bodyFilter.connect(ac.destination);
+  // ── Harmonic partials tambahan (tidak proporsional seperti kajian) ──
+  // Harmonik ke-2 & ke-3 dengan decay lebih cepat dari fundamental
+  const h2 = ac.createOscillator(); h2.type = 'sine'; h2.frequency.value = freq * 2;
+  const h2g = ac.createGain();
+  h2g.gain.setValueAtTime(0.22, time);
+  h2g.gain.exponentialRampToValueAtTime(0.001, time + 0.55);
+  h2.connect(h2g); h2g.connect(master);
 
-  // ── Reverb ruang kecil (kotak kayu) ──
-  const { reverb } = getSynthChain(ac);
-  const rvG = ac.createGain(); rvG.gain.value = 0.22;
-  master.connect(rvG); rvG.connect(reverb);
+  const h3 = ac.createOscillator(); h3.type = 'sine'; h3.frequency.value = freq * 3.02;
+  const h3g = ac.createGain();
+  h3g.gain.setValueAtTime(0.09, time);
+  h3g.gain.exponentialRampToValueAtTime(0.001, time + 0.22);
+  h3.connect(h3g); h3g.connect(master);
 
-  const stop1 = time + 1.45;
-  const stop2 = time + 0.58;
-  pluck.start(time); pluck.stop(time + 0.01);
-  d1f0.start(time);  d1f0.stop(stop1);
-  d2f0.start(time);  d2f0.stop(stop1);
-  d1f1.start(time);  d1f1.stop(stop2);
-  d2f1.start(time);  d2f1.stop(stop2);
-  d1f2.start(time);  d1f2.stop(time + 0.3);
-  d1f3.start(time);  d1f3.stop(time + 0.14);
+  // ── Start & stop ──
+  pluck.start(time);  pluck.stop(time + 0.007);
+  osc1.start(time);   osc1.stop(time + 2.05);
+  osc2.start(time);   osc2.stop(time + 1.25);
+  h2.start(time);     h2.stop(time + 0.58);
+  h3.start(time);     h3.stop(time + 0.25);
 }
 
 function makeDistCurve(amount) {
