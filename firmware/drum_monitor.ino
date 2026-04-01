@@ -25,7 +25,7 @@ Adafruit_ADS1015 ads;
 // ── Pin HW-040 Rotary Encoder ──────────────────────────────────
 #define ENC_CLK 34
 #define ENC_DT  35
-#define ENC_SW  32
+#define ENC_SW  27
 
 // ── Pin Push Button ────────────────────────────────────────────
 #define BTN_SAVE 25
