@@ -6,6 +6,9 @@
  * Button DEL   → reset sensor ke default
  */
 import { writable, get } from 'svelte/store';
+
+// ── Sample "kosong" untuk sensor yang belum di-assign ───────────
+export const EMPTY_SAMPLE = { id: null, label: '— Kosong —', group: '', icon: '🔇', color: '#475569' };
 import {
   scheduleKick, scheduleSnare, scheduleHihat, scheduleClap, scheduleRim,
   scheduleTaganing, scheduleOdap, scheduleHesek, scheduleGordang,
@@ -60,7 +63,8 @@ export const SAMPLE_FNS = {
   has_a4:   (t, v) => scheduleHasapi(440.00, t, v),
 };
 
-const DEFAULTS = ['snare', 'kick', 'taganing', 'hihat'];
+// Semua sensor mulai kosong — user harus pilih & save sample sendiri
+const DEFAULTS = [null, null, null, null];
 const STORAGE_KEY = 'drum_sensor_samples_v1';
 
 function _load() {
@@ -117,21 +121,17 @@ export function saveSample(sensorIdx) {
 }
 
 export function deleteSample(sensorIdx) {
+  // Reset ke kosong (null), bukan ke default
   sensorSamples.update(arr => {
     const next = [...arr];
-    next[sensorIdx] = DEFAULTS[sensorIdx];
+    next[sensorIdx] = null;
     _persist(next);
-    return next;
-  });
-  // Reset kursor ke posisi default juga
-  cursorIdx.update(arr => {
-    const next = [...arr];
-    next[sensorIdx] = _defaultCursor[sensorIdx];
     return next;
   });
 }
 
-// Helper: ambil info sample berdasarkan id
+// Helper: ambil info sample berdasarkan id (null = kosong)
 export function getSample(id) {
-  return SAMPLES.find(s => s.id === id) ?? SAMPLES[0];
+  if (!id) return EMPTY_SAMPLE;
+  return SAMPLES.find(s => s.id === id) ?? EMPTY_SAMPLE;
 }

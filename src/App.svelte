@@ -13,6 +13,7 @@
     connect, disconnect, sendCmd,
     hitEvent, encoderEvent, btnEvent,
   } from './lib/serial.js';
+  import { get } from 'svelte/store';
   import {
     SAMPLE_FNS, getSample,
     sensorSamples, selectedSensor, encoderMode,
@@ -47,11 +48,12 @@
       bpm = [...bpm];
     }
 
-    // Play sample yang di-assign ke sensor ini
+    // Play sample yang di-assign ke sensor ini (skip jika belum ada sample)
     if (!audioEnabled) return;
     try {
+      const sampleId = get(sensorSamples)[e.idx];
+      if (!sampleId) return;               // sensor kosong → senyap
       await ensureRunning();
-      const sampleId = $sensorSamples[e.idx];
       SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, e.velocity / 100);
     } catch {}
   });
@@ -71,8 +73,9 @@
   // ── Button fisik SAVE / DELETE ─────────────────────────────────
   btnEvent.subscribe(e => {
     if (!e.ts) return;
-    if (e.btn === 'SAVE') saveSample($selectedSensor);
-    if (e.btn === 'DEL')  deleteSample($selectedSensor);
+    const si = get(selectedSensor);
+    if (e.btn === 'SAVE') saveSample(si);
+    if (e.btn === 'DEL')  deleteSample(si);
   });
 
   async function toggleConn() {
@@ -183,9 +186,9 @@
           <!-- Badge sample yang tersimpan -->
           <button
             class="flex items-center gap-1 text-xs px-2 py-0.5 rounded border transition-colors"
-            style="border-color:{sample.color}44; color:{sample.color}; background:{sample.color}11"
+            style="border-color:{sample.id ? sample.color+'44' : '#33415544'}; color:{sample.id ? sample.color : '#64748b'}; background:{sample.id ? sample.color+'11' : 'transparent'}"
             on:click={() => { selectedSensor.set(i); encoderMode.set('sample'); tab = 'assign'; }}
-            title="Klik untuk ganti sample sensor ini"
+            title="Klik untuk assign sample ke sensor ini"
           >
             <span>{sample.icon}</span>
             <span>{sample.label}</span>

@@ -6,7 +6,7 @@
 -->
 <script>
   import {
-    SAMPLES, SAMPLE_FNS, getSample,
+    SAMPLES, SAMPLE_FNS, getSample, EMPTY_SAMPLE,
     sensorSamples, selectedSensor, encoderMode, cursorIdx,
     saveSample, deleteSample, encButton,
   } from './sampleStore.js';
@@ -101,12 +101,12 @@
           <!-- Sample tersimpan -->
           <div class="flex items-center gap-1">
             <span class="text-xs">{saved.icon}</span>
-            <span class="text-xs text-slate-300 font-medium truncate">{saved.label}</span>
-            {#if savedId !== ['snare','kick','taganing','hihat'][si]}
+            <span class="text-xs font-medium truncate" style="color:{savedId ? saved.color : '#64748b'}">{saved.label}</span>
+            {#if savedId}
               <button
                 class="ml-auto text-xs text-red-600 hover:text-red-400 transition-colors shrink-0"
                 on:click|stopPropagation={() => deleteSample(si)}
-                title="Reset ke default"
+                title="Kosongkan sensor ini"
               >✕</button>
             {/if}
           </div>
