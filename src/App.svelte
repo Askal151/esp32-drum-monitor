@@ -6,16 +6,18 @@
   import SynthSequencer    from './lib/SynthSequencer.svelte';
   import TagadingSequencer from './lib/TagadingSequencer.svelte';
   import HasapiSequencer   from './lib/HasapiSequencer.svelte';
-  import { unlockAudio, isRunning } from './lib/audio.js';
+  import SampleAssign      from './lib/SampleAssign.svelte';
+  import { unlockAudio, isRunning, getAudioCtx, ensureRunning } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd,
     hitEvent, encoderEvent, btnEvent,
   } from './lib/serial.js';
   import {
-    KITS, activeKitIdx, savedSequences, selectedSeqId,
-    saveSequence, deleteSequence, getSequence,
-  } from './lib/kitStore.js';
+    SAMPLE_FNS, getSample,
+    sensorSamples, selectedSensor, encoderMode,
+    encRotate, encButton, saveSample, deleteSample,
+  } from './lib/sampleStore.js';
 
   const CLR   = ['#22d3ee', '#4ade80', '#f59e0b', '#f472b6'];
   const NAMES = ['SNARE', 'KICK', 'TOM', 'HI-HAT'];
@@ -28,12 +30,11 @@
   let bpm  = [0, 0, 0, 0];
   const hitTimes = [[], [], [], []];
 
-  // ── bind:this untuk sequencer (untuk getSnapshot/loadSnapshot) ─
-  let beatRef, synthRef, tagadingRef;
-
-  // Hit counter & BPM
-  hitEvent.subscribe(e => {
+  // ── Hit counter, BPM, dan play sample ─────────────────────────
+  hitEvent.subscribe(async e => {
     if (e.idx < 0 || !e.ts) return;
+
+    // Counter & BPM
     hits[e.idx]++;
     hits = [...hits];
     hitTimes[e.idx].push(e.ts);
@@ -45,48 +46,34 @@
       bpm[e.idx] = Math.round(60000 / (intervals.reduce((a,b)=>a+b,0)/intervals.length));
       bpm = [...bpm];
     }
+
+    // Play sample yang di-assign ke sensor ini
+    if (!audioEnabled) return;
+    try {
+      await ensureRunning();
+      const sampleId = $sensorSamples[e.idx];
+      SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, e.velocity / 100);
+    } catch {}
   });
 
-  // ── Encoder: rotate kit aktif ──────────────────────────────────
+  // ── Encoder HW-040 ─────────────────────────────────────────────
   encoderEvent.subscribe(e => {
     if (!e.ts) return;
-    activeKitIdx.update(i => (i + (e.dir > 0 ? 1 : -1) + KITS.length) % KITS.length);
-    tab = 'sequencer';
+    if (e.btn) {
+      encButton();           // SW tekan → toggle mode sensor ↔ sample
+      tab = 'assign';        // auto-switch ke tab assign
+    } else {
+      encRotate(e.dir);
+      tab = 'assign';
+    }
   });
 
-  // ── Button fisik: SAVE dan DELETE ─────────────────────────────
+  // ── Button fisik SAVE / DELETE ─────────────────────────────────
   btnEvent.subscribe(e => {
     if (!e.ts) return;
-    if (e.btn === 'SAVE')  handleSave();
-    if (e.btn === 'DEL')   handleDelete();
+    if (e.btn === 'SAVE') saveSample($selectedSensor);
+    if (e.btn === 'DEL')  deleteSample($selectedSensor);
   });
-
-  function handleSave() {
-    const k    = $activeKitIdx;
-    const refs = [beatRef, tagadingRef, synthRef];
-    const snap = refs[k]?.getSnapshot();
-    if (snap) saveSequence(k, snap);
-  }
-
-  function handleDelete() {
-    if ($selectedSeqId != null) deleteSequence($selectedSeqId);
-  }
-
-  function handleLoad(id) {
-    const seq = getSequence(id);
-    if (!seq) return;
-    const refs = [beatRef, tagadingRef, synthRef];
-    refs[seq.kitIdx]?.loadSnapshot(seq.snapshot);
-    activeKitIdx.set(seq.kitIdx);
-    tab = 'sequencer';
-  }
-
-  function fmtTime(ts) {
-    return new Date(ts).toLocaleString('id-ID', {
-      day: '2-digit', month: 'short',
-      hour: '2-digit', minute: '2-digit',
-    });
-  }
 
   async function toggleConn() {
     lastError = '';
@@ -109,7 +96,7 @@
     audioEnabled = !audioEnabled;
   }
 
-  let panelH = 340;
+  let panelH = 380;
   let resizing = false, ry0 = 0, rh0 = 0;
   function rstart(e) { resizing=true; ry0=e.clientY; rh0=panelH; e.preventDefault(); }
   function rmove(e)  { if(resizing) panelH=Math.max(200,Math.min(700,rh0+ry0-e.clientY)); }
@@ -133,17 +120,17 @@
       {:else}
         <span class="text-xs text-slate-700">○ Idle</span>
       {/if}
-      <!-- Kit indicator — berubah saat encoder diputar -->
+      <!-- Encoder mode indicator -->
       <div
         class="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border transition-all"
-        style="border-color:{KITS[$activeKitIdx].color}; color:{KITS[$activeKitIdx].color}; background:{KITS[$activeKitIdx].color}18"
+        class:animate-pulse={$encoderMode === 'sample'}
+        style="border-color:{$encoderMode === 'sample' ? '#f59e0b' : '#334155'}; color:{$encoderMode === 'sample' ? '#f59e0b' : '#64748b'}; background:{$encoderMode === 'sample' ? '#f59e0b18' : 'transparent'}"
       >
-        <span>{KITS[$activeKitIdx].icon}</span>
-        <span>{KITS[$activeKitIdx].label}</span>
+        <span>{$encoderMode === 'sensor' ? '🎛' : '🔊'}</span>
+        <span>{$encoderMode === 'sensor' ? 'Sensor' : 'Sample'}</span>
       </div>
     </div>
     <div class="flex items-center gap-2">
-      <!-- Toggle audio -->
       <button
         class="text-xs px-3 py-1.5 rounded-md font-bold ring-1 transition-all
           {!audioReady ? 'bg-yellow-950 text-yellow-400 ring-yellow-800 animate-pulse'
@@ -183,11 +170,26 @@
   <!-- DRUM PADS -->
   <section class="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
     {#each $sensors as s, i}
-      <div class="card p-4">
+      {@const sample = getSample($sensorSamples[i])}
+      <div
+        class="card p-4 transition-all duration-200"
+        class:ring-1={$selectedSensor === i}
+        style={$selectedSensor === i ? `--tw-ring-color:${CLR[i]}` : ''}
+      >
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
-            {i === 0 ? '🥁 SEQUENCER' : i === 1 ? '🎹 SYNTH' : i === 2 ? '🪘 TOM' : '🎵 HI-HAT'}
+            {i === 0 ? '🥁' : i === 1 ? '🎹' : i === 2 ? '🪘' : '🎵'} {NAMES[i]}
           </span>
+          <!-- Badge sample yang tersimpan -->
+          <button
+            class="flex items-center gap-1 text-xs px-2 py-0.5 rounded border transition-colors"
+            style="border-color:{sample.color}44; color:{sample.color}; background:{sample.color}11"
+            on:click={() => { selectedSensor.set(i); encoderMode.set('sample'); tab = 'assign'; }}
+            title="Klik untuk ganti sample sensor ini"
+          >
+            <span>{sample.icon}</span>
+            <span>{sample.label}</span>
+          </button>
         </div>
         <DrumPad
           idx   = {i}
@@ -203,88 +205,24 @@
     {/each}
   </section>
 
-  <!-- SAVED SEQUENCES PANEL ─────────────────────────────────── -->
-  <section class="card px-4 py-3 flex flex-col gap-2">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-bold tracking-widest text-slate-600">SEQUENCE LIBRARY</span>
-        <span class="text-xs text-slate-700">({$savedSequences.length})</span>
-      </div>
-      <div class="flex items-center gap-2">
-        <!-- Kit selector manual (klik atau putar encoder) -->
-        {#each KITS as kit, ki}
-          <button
-            class="text-xs px-2.5 py-1 rounded border transition-all font-medium
-              {$activeKitIdx === ki
-                ? 'border-transparent text-[#080b12] font-bold'
-                : 'bg-transparent border-slate-800 text-slate-600 hover:text-slate-400'}"
-            style={$activeKitIdx === ki ? `background:${kit.color}; border-color:${kit.color}` : ''}
-            on:click={() => activeKitIdx.set(ki)}
-          >{kit.icon} {kit.label}</button>
-        {/each}
-        <!-- Save manual (fallback jika tanpa hardware button) -->
-        <button
-          class="text-xs px-3 py-1 rounded-md font-bold bg-emerald-950 text-emerald-400 border border-emerald-900 hover:bg-emerald-900 transition-colors"
-          on:click={handleSave}
-          title="Simpan sequence aktif (atau tekan button SAVE di ESP32)"
-        >💾 Save</button>
-      </div>
-    </div>
-
-    {#if $savedSequences.length === 0}
-      <p class="text-xs text-slate-700 py-1">
-        Belum ada sequence tersimpan — set pattern lalu tekan button SAVE di ESP32
-      </p>
-    {:else}
-      <div class="flex flex-wrap gap-1.5">
-        {#each $savedSequences as seq}
-          {@const kit = KITS[seq.kitIdx] ?? KITS[0]}
-          <div
-            class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border cursor-pointer transition-all text-xs
-              {$selectedSeqId === seq.id
-                ? 'border-transparent text-slate-900 font-bold'
-                : 'border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-400'}"
-            style={$selectedSeqId === seq.id ? `background:${kit.color}; border-color:${kit.color}` : ''}
-            on:click={() => selectedSeqId.set($selectedSeqId === seq.id ? null : seq.id)}
-            on:dblclick={() => handleLoad(seq.id)}
-            title="Klik untuk pilih · Double-click untuk load"
-            role="button"
-            tabindex="0"
-            on:keydown={e => e.key === 'Enter' && handleLoad(seq.id)}
-          >
-            <span>{kit.icon}</span>
-            <span>{seq.name}</span>
-            <span class="opacity-60 text-xs">{fmtTime(seq.ts)}</span>
-            <button
-              class="ml-1 opacity-50 hover:opacity-100 hover:text-red-400 transition-colors font-bold"
-              on:click|stopPropagation={() => deleteSequence(seq.id)}
-              title="Hapus sequence ini"
-            >✕</button>
-          </div>
-        {/each}
-        {#if $selectedSeqId}
-          <button
-            class="text-xs px-2.5 py-1.5 rounded-lg border border-red-900 text-red-500 hover:bg-red-950 transition-colors"
-            on:click={handleDelete}
-            title="Hapus sequence dipilih (atau tekan button DELETE di ESP32)"
-          >🗑 Hapus Dipilih</button>
-        {/if}
-      </div>
-    {/if}
-  </section>
-
-  <!-- PANEL BAWAH — semua komponen always mounted, guna display:none -->
+  <!-- PANEL BAWAH -->
   <section class="card flex flex-col overflow-hidden" style="height:{panelH}px; min-height:200px; max-height:700px">
     <div class="h-3 shrink-0 flex items-center justify-center cursor-ns-resize bg-slate-950 border-b border-slate-800 hover:bg-slate-900 transition-colors"
       on:mousedown={rstart} role="separator" aria-orientation="horizontal">
       <div class="w-10 h-0.5 bg-slate-800 rounded"></div>
     </div>
     <div class="flex items-center gap-1 px-3 bg-slate-950 border-b border-slate-800 shrink-0">
+      <button class="tab-item {tab==='assign'    ? 'active' : ''}" on:click={() => tab='assign'}>🎛 Assign</button>
       <button class="tab-item {tab==='drum'      ? 'active' : ''}" on:click={() => tab='drum'}>📈 Waveform</button>
       <button class="tab-item {tab==='sequencer' ? 'active' : ''}" on:click={() => tab='sequencer'}>🥁 Sequencer</button>
       <button class="tab-item {tab==='monitor'   ? 'active' : ''}" on:click={() => tab='monitor'}>⬛ Serial Monitor</button>
     </div>
     <div class="flex-1 overflow-hidden relative">
+
+      <!-- Sample Assign — always mounted -->
+      <div class="absolute inset-0 p-2" style="display:{tab==='assign' ? 'flex' : 'none'}; flex-direction:column">
+        <SampleAssign />
+      </div>
 
       <!-- Waveform — always mounted -->
       <div class="absolute inset-0 p-2" style="display:{tab==='drum' ? 'block' : 'none'}">
@@ -294,27 +232,10 @@
       <!-- Sequencer — 4 sequencer stacked, always mounted -->
       <div class="absolute inset-0 overflow-y-auto flex flex-col gap-px"
            style="display:{tab==='sequencer' ? 'flex' : 'none'}">
-        <div
-          class="transition-all duration-300"
-          style="height:310px; flex:none; outline:{$activeKitIdx===0 ? `2px solid ${KITS[0].color}44` : 'none'}; outline-offset:-2px; border-radius:8px"
-        >
-          <BeatSequencer bind:this={beatRef} />
-        </div>
-        <div
-          class="border-t border-slate-800 transition-all duration-300"
-          style="height:250px; flex:none; outline:{$activeKitIdx===2 ? `2px solid ${KITS[2].color}44` : 'none'}; outline-offset:-2px; border-radius:8px"
-        >
-          <SynthSequencer bind:this={synthRef} />
-        </div>
-        <div
-          class="border-t-2 border-amber-900 transition-all duration-300"
-          style="height:290px; flex:none; outline:{$activeKitIdx===1 ? `2px solid ${KITS[1].color}44` : 'none'}; outline-offset:-2px; border-radius:8px"
-        >
-          <TagadingSequencer bind:this={tagadingRef} />
-        </div>
-        <div class="border-t-2 border-pink-900" style="height:280px; flex:none">
-          <HasapiSequencer />
-        </div>
+        <div style="height:310px; flex:none"><BeatSequencer /></div>
+        <div class="border-t border-slate-800" style="height:250px; flex:none"><SynthSequencer /></div>
+        <div class="border-t-2 border-amber-900" style="height:290px; flex:none"><TagadingSequencer /></div>
+        <div class="border-t-2 border-pink-900" style="height:280px; flex:none"><HasapiSequencer /></div>
       </div>
 
       <!-- Serial Monitor — always mounted -->

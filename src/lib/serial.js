@@ -99,7 +99,8 @@ function parseLine(raw) {
   m = RX_ENC.exec(line);
   if (m) {
     const val = m[1];
-    if (val !== 'BTN') encoderEvent.set({ dir: +val, ts: Date.now() });
+    if (val === 'BTN') encoderEvent.set({ dir: 0, btn: true,  ts: Date.now() });
+    else               encoderEvent.set({ dir: +val, btn: false, ts: Date.now() });
     return;
   }
   m = RX_BTN.exec(line);
