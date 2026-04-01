@@ -165,6 +165,19 @@
   }
 
   onDestroy(() => { clearTimeout(_timerId); unsubSensor(); });
+
+  export function getSnapshot() {
+    return { steps: [...steps], vel, bpm, selPreset };
+  }
+  export function loadSnapshot(snap) {
+    if (!snap) return;
+    stop();
+    steps     = [...snap.steps];
+    vel       = snap.vel ?? vel;
+    bpm       = snap.bpm ?? bpm;
+    selPreset = snap.selPreset ?? '';
+    steps     = [...steps];
+  }
 </script>
 
 <div class="flex flex-col gap-2.5 h-full bg-slate-950 rounded-lg p-3 overflow-y-auto">

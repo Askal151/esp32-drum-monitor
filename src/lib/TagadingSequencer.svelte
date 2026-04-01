@@ -130,6 +130,19 @@
   $: if (playing && bpm) { clearTimeout(_timerId); _timerId = setTimeout(scheduler, 0); }
 
   onDestroy(() => { clearTimeout(_timerId); unsubSensor(); });
+
+  export function getSnapshot() {
+    return { pattern: pattern.map(t => [...t]), vels: [...vels], bpm, selPreset };
+  }
+  export function loadSnapshot(snap) {
+    if (!snap) return;
+    stop();
+    pattern  = snap.pattern.map(t => [...t]);
+    vels     = [...snap.vels];
+    bpm      = snap.bpm ?? bpm;
+    selPreset = snap.selPreset ?? '';
+    pattern  = [...pattern];
+  }
 </script>
 
 <div class="flex flex-col gap-3 h-full bg-slate-950 rounded-lg p-3 overflow-y-auto">
