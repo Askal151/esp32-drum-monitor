@@ -110,19 +110,20 @@
     <!-- ── STATE: SAMPLE ── -->
     {:else if $pickerState === 'sample'}
       <!-- Info sensor + butang kosongkan -->
+      {#each [getSample($sensorSamples[$selectedSensor])] as saved}
       <div class="px-3 pt-2 pb-1 flex items-center justify-between shrink-0">
         <div class="flex items-center gap-2">
           <span>{SENSOR_ICONS[$selectedSensor]}</span>
-          {@const saved = getSample($sensorSamples[$selectedSensor])}
           <span class="text-xs" style="color:{saved.id ? saved.color : '#475569'}">{saved.label}</span>
         </div>
-        {#if $sensorSamples[$selectedSensor]}
+        {#if saved.id}
           <button
             class="text-xs px-2 py-0.5 rounded border border-red-900 text-red-500 hover:bg-red-950 transition-colors"
             on:click={() => { deleteSample($selectedSensor); closePicker(); }}
           >Kosongkan</button>
         {/if}
       </div>
+      {/each}
 
       <div class="flex-1 overflow-y-auto min-h-0 py-1" bind:this={sampleListEl}>
         {#each GROUPS as group}
