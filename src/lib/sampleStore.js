@@ -1,7 +1,5 @@
 /**
  * sampleStore.js — Per-sensor sample assignment
- * Encoder navigasi: mode 'sensor' (pilih sensor) atau 'sample' (pilih sample)
- * Encoder SW   → toggle mode
  * Button NAV (GPIO 26)  → navigasi ke sample berikutnya + preview + tunjuk picker
  * Button SEL (GPIO 25)  → confirm/simpan sample kursor ke sensor aktif
  */
@@ -78,11 +76,8 @@ function _persist(arr) {
 // Sample yang tersimpan untuk setiap sensor (4 sensor)
 export const sensorSamples = writable(_load() ?? [...DEFAULTS]);
 
-// Sensor yang sedang dikontrol encoder (0–3)
+// Sensor yang sedang aktif (0–3) — pilih dari UI web
 export const selectedSensor = writable(0);
-
-// Mode encoder: 'sensor' = navigasi antar sensor, 'sample' = pilih sample
-export const encoderMode = writable('sensor');
 
 // Posisi kursor di SAMPLES[] per sensor (untuk preview sebelum save)
 // Default sesuai posisi DEFAULTS dalam SAMPLES
@@ -104,25 +99,6 @@ export function showPicker() {
 export function hidePicker() {
   clearTimeout(_pickerTimer);
   pickerVisible.set(false);
-}
-
-// ── Encoder actions ─────────────────────────────────────────────
-export function encRotate(dir) {
-  const mode = get(encoderMode);
-  if (mode === 'sensor') {
-    selectedSensor.update(i => (i + (dir > 0 ? 1 : -1) + 4) % 4);
-  } else {
-    const sensor = get(selectedSensor);
-    cursorIdx.update(arr => {
-      const next = [...arr];
-      next[sensor] = (next[sensor] + (dir > 0 ? 1 : -1) + SAMPLES.length) % SAMPLES.length;
-      return next;
-    });
-  }
-}
-
-export function encButton() {
-  encoderMode.update(m => m === 'sensor' ? 'sample' : 'sensor');
 }
 
 // ── Button NAV / SEL actions ─────────────────────────────────────

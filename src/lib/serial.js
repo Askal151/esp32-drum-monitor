@@ -22,9 +22,8 @@ export const sensors = writable([
 export const chartTick  = writable(0);
 export const hitEvent   = writable({ idx: -1, velocity: 0, ts: 0 });  // trigger hit anim
 
-// ── Encoder & Button events ─────────────────────────────────────
-export const encoderEvent = writable({ dir: 0, ts: 0 });   // dir: +1 atau -1
-export const btnEvent     = writable({ btn: '', ts: 0 });   // btn: 'NAV' atau 'SEL'
+// ── Button events ──────────────────────────────────────────────
+export const btnEvent = writable({ btn: '', ts: 0 });   // btn: 'NAV' atau 'SEL'
 
 export const plotBuf = [
   { adc: new Array(MAX_POINTS).fill(0), dev: new Array(MAX_POINTS).fill(0) },
@@ -51,7 +50,6 @@ const RX_THR2 = /\[THRESH2\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
 const RX_THR3 = /\[THRESH3\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
 const RX_THR4 = /\[THRESH4\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
 const RX_BASE = /\[(?:AUTO|CAL|INIT)\s*S(\d)\].*?(\d+)\s*$/;
-const RX_ENC  = /\[ENC\]([+\-]\d+|BTN)/;
 const RX_BTN  = /\[BTN\](NAV|SEL)/;
 
 // ── State ───────────────────────────────────────────────────────
@@ -96,13 +94,6 @@ function parseLine(raw) {
   if (m) { const t = [1,2,3,4].map(i=>+m[i]); sensors.update(a=>{a[3]={...a[3],thresh:t};return a;}); return; }
   m = RX_BASE.exec(line);
   if (m) { const idx=+m[1]-1,base=+m[2]; sensors.update(a=>{a[idx]={...a[idx],baseline:base};return a;}); return; }
-  m = RX_ENC.exec(line);
-  if (m) {
-    const val = m[1];
-    if (val === 'BTN') encoderEvent.set({ dir: 0, btn: true,  ts: Date.now() });
-    else               encoderEvent.set({ dir: +val, btn: false, ts: Date.now() });
-    return;
-  }
   m = RX_BTN.exec(line);
   if (m) { btnEvent.set({ btn: m[1], ts: Date.now() }); }
 }

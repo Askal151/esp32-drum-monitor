@@ -1,32 +1,29 @@
 <!--
-  SampleAssign.svelte — UI untuk assign sample ke setiap sensor via encoder
-  - 4 kolom sensor
-  - Daftar sample per group (Western / Batak / Synth / Hasapi)
-  - Encoder mode: 'sensor' = pilih sensor, 'sample' = scroll sample
+  SampleAssign.svelte — UI untuk assign sample ke setiap sensor
+  - 4 kolom sensor, klik untuk pilih sensor aktif
+  - Klik sample untuk terus assign + preview
+  - Button NAV (GPIO 26) = next sample, Button SEL (GPIO 25) = simpan
 -->
 <script>
   import {
-    SAMPLES, SAMPLE_FNS, getSample, EMPTY_SAMPLE,
-    sensorSamples, selectedSensor, encoderMode, cursorIdx,
-    saveSample, deleteSample, encButton,
+    SAMPLES, SAMPLE_FNS, getSample,
+    sensorSamples, selectedSensor, cursorIdx,
+    saveSample, deleteSample, showPicker,
   } from './sampleStore.js';
   import { getAudioCtx, ensureRunning } from './audio.js';
 
   const SENSOR_NAMES  = ['SNARE', 'KICK', 'TOM', 'HI-HAT'];
   const SENSOR_COLORS = ['#22d3ee', '#4ade80', '#f59e0b', '#f472b6'];
 
-  // Kelompokkan sample berdasarkan group
   const GROUPS = [...new Set(SAMPLES.map(s => s.group))];
 
   async function previewSample(sampleId) {
     await ensureRunning();
-    const fn = SAMPLE_FNS[sampleId];
-    fn?.(getAudioCtx().currentTime, 0.7);
+    SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, 0.7);
   }
 
   function clickSensor(i) {
     selectedSensor.set(i);
-    encoderMode.set('sample');
   }
 
   function clickSample(sensorIdx, sampleIdx) {
@@ -56,20 +53,11 @@
   <!-- Header -->
   <div class="flex items-center justify-between shrink-0">
     <span class="text-xs font-bold tracking-widest text-slate-600">SAMPLE ASSIGN</span>
-    <div class="flex items-center gap-2">
-      <!-- Mode badge -->
-      <span class="text-xs px-2 py-0.5 rounded font-bold
-        {$encoderMode === 'sample'
-          ? 'bg-amber-950 text-amber-400 border border-amber-900'
-          : 'bg-slate-900 text-slate-600 border border-slate-800'}">
-        {$encoderMode === 'sensor' ? '🎛 PILIH SENSOR' : '🔊 PILIH SAMPLE'}
-      </span>
-      <button
-        class="text-xs px-2.5 py-1 rounded border border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors"
-        on:click={encButton}
-        title="Toggle mode (sama dengan tekan SW encoder)"
-      >Toggle Mode</button>
-    </div>
+    <button
+      class="text-xs px-2.5 py-1 rounded border border-amber-900 text-amber-400 bg-amber-950 hover:bg-amber-900 transition-colors"
+      on:click={showPicker}
+      title="Buka picker (atau tekan NAV button di ESP32)"
+    >🎵 Pilih Sample</button>
   </div>
 
   <!-- 4 Sensor columns -->
@@ -79,7 +67,6 @@
       {@const saved    = getSample(savedId)}
       {@const cursor   = $cursorIdx[si]}
       {@const isActive = $selectedSensor === si}
-      {@const isSampleMode = isActive && $encoderMode === 'sample'}
 
       <div
         class="flex flex-col rounded-lg border-2 transition-all duration-200 overflow-hidden cursor-pointer
@@ -98,7 +85,6 @@
           style="background:{isActive ? SENSOR_COLORS[si] + '22' : 'transparent'}"
         >
           <span class="text-xs font-bold" style="color:{SENSOR_COLORS[si]}">{SENSOR_NAMES[si]}</span>
-          <!-- Sample tersimpan -->
           <div class="flex items-center gap-1">
             <span class="text-xs">{saved.icon}</span>
             <span class="text-xs font-medium truncate" style="color:{savedId ? saved.color : '#64748b'}">{saved.label}</span>
@@ -126,12 +112,12 @@
                 <button
                   data-idx={idx}
                   class="w-full text-left px-2 py-1 text-xs flex items-center gap-1.5 transition-colors
-                    {idx === cursor && isSampleMode
+                    {idx === cursor && isActive
                       ? 'text-slate-900 font-bold'
                       : savedId === sample.id
                         ? 'text-slate-200'
                         : 'text-slate-600 hover:text-slate-400'}"
-                  style={idx === cursor && isSampleMode
+                  style={idx === cursor && isActive
                     ? `background:${sample.color}; color:#080b12`
                     : savedId === sample.id
                       ? `color:${sample.color}`
@@ -140,7 +126,7 @@
                 >
                   {#if savedId === sample.id}
                     <span class="text-xs">✓</span>
-                  {:else if idx === cursor && isSampleMode}
+                  {:else if idx === cursor && isActive}
                     <span class="text-xs">▶</span>
                   {:else}
                     <span class="text-xs opacity-0">·</span>
@@ -158,12 +144,12 @@
             <button
               class="flex-1 text-xs py-1 rounded font-bold bg-emerald-950 text-emerald-400 border border-emerald-900 hover:bg-emerald-900 transition-colors"
               on:click|stopPropagation={() => saveSample(si)}
-              title="Simpan sample (atau tekan SAVE button di ESP32)"
-            >💾 Save</button>
+              title="Simpan sample (atau tekan SEL button di ESP32)"
+            >💾 Simpan</button>
             <button
               class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-500 border border-slate-800 hover:text-red-400 hover:border-red-900 transition-colors"
               on:click|stopPropagation={() => deleteSample(si)}
-              title="Reset ke default (atau tekan DEL button di ESP32)"
+              title="Kosongkan sensor"
             >🗑</button>
           </div>
         {/if}
@@ -173,8 +159,8 @@
 
   <!-- Legend -->
   <div class="text-xs text-slate-700 flex items-center gap-3 shrink-0">
-    <span>Encoder: putar = navigasi · tekan SW = ganti mode</span>
+    <span>NAV button = sample seterusnya</span>
     <span>·</span>
-    <span>SAVE button = simpan · DEL button = reset</span>
+    <span>SEL button = simpan sample</span>
   </div>
 </div>

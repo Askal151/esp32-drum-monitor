@@ -1,19 +1,14 @@
 /**
  * drum_monitor.ino — ESP32 Drum Monitor
  * Sensor: 4x Hall Effect via ADS1015 (A0–A3)
- * Encoder: HW-040 Rotary Encoder (CLK=34, DT=35, SW=27)
- * Button NAV:    GPIO 26  ← tekan untuk navigasi ke sample berikutnya
- * Button SELECT: GPIO 25  ← tekan untuk confirm/simpan sample
+ * Button NAV:    GPIO 26  ← navigasi ke sample berikutnya
+ * Button SELECT: GPIO 25  ← confirm/simpan sample
  *
  * CATATAN PIN:
- *   GPIO 34/35 = INPUT ONLY, tidak ada internal pull-up (HW-040 sudah ada pull-up sendiri)
- *   GPIO 27/25/26 = mendukung INPUT_PULLUP
+ *   GPIO 25/26 = mendukung INPUT_PULLUP (active LOW)
  *
  * Serial Output @ 115200:
  *   HALL4|adc1|dev1|led1|adc2|dev2|led2|adc3|dev3|led3|adc4|dev4|led4
- *   [ENC]+1   — encoder putar kanan
- *   [ENC]-1   — encoder putar kiri
- *   [ENC]BTN  — encoder SW ditekan
  *   [BTN]NAV  — button NAV ditekan (GPIO 26) → next sample
  *   [BTN]SEL  — button SELECT ditekan (GPIO 25) → confirm/simpan sample
  */
@@ -23,11 +18,6 @@
 
 // ── ADS1015 ────────────────────────────────────────────────────
 Adafruit_ADS1015 ads;
-
-// ── Pin HW-040 ─────────────────────────────────────────────────
-#define ENC_CLK 34   // INPUT ONLY — HW-040 sudah ada pull-up onboard
-#define ENC_DT  35   // INPUT ONLY — HW-040 sudah ada pull-up onboard
-#define ENC_SW  27   // Mendukung INPUT_PULLUP
 
 // ── Pin Push Button (active LOW) ───────────────────────────────
 #define BTN_SEL 25   // SELECT — confirm/simpan sample
@@ -50,35 +40,11 @@ bool    baselineDone          = false;
 unsigned long lastBaselineTime = 0;
 #define BASELINE_INTERVAL_MS 300000UL  // 5 menit
 
-// ── Encoder state ──────────────────────────────────────────────
-// Gunakan CHANGE interrupt + state machine untuk deteksi arah yang reliable
-volatile int  encPos      = 0;
-volatile uint8_t encState = 0;  // 2-bit: [CLK|DT]
-
-// ISR: trigger pada CHANGE CLK — tidak re-read CLK, pakai state machine
-void IRAM_ATTR onEncoderCLK() {
-  bool clk = digitalRead(ENC_CLK);
-  bool dt  = digitalRead(ENC_DT);
-  uint8_t s = (clk << 1) | dt;
-
-  // Arah ditentukan dari state sebelumnya:
-  // CW:  state berubah dari 0b11 → 0b01 (CLK turun, DT masih HIGH)
-  // CCW: state berubah dari 0b11 → 0b10 (CLK masih HIGH, DT turun — tapi ISR pada CLK)
-  // Cara paling simple: saat CLK LOW, cek DT
-  if (!clk) {
-    if (dt) encPos++;   // CW
-    else    encPos--;   // CCW
-  }
-  encState = s;
-}
-
 // ── Debounce non-blocking ──────────────────────────────────────
-unsigned long lastEncSwTime  = 0;
-unsigned long lastSelTime    = 0;
-unsigned long lastNavTime    = 0;
-bool prevEncSw   = HIGH;
-bool prevBtnSel  = HIGH;
-bool prevBtnNav  = HIGH;
+unsigned long lastSelTime = 0;
+unsigned long lastNavTime = 0;
+bool prevBtnSel = HIGH;
+bool prevBtnNav = HIGH;
 #define DEBOUNCE_MS 80
 
 // ── Setup ──────────────────────────────────────────────────────
@@ -86,16 +52,8 @@ void setup() {
   Serial.begin(115200);
   delay(300);
 
-  // GPIO 34/35 INPUT ONLY — jangan INPUT_PULLUP (diabaikan)
-  pinMode(ENC_CLK, INPUT);
-  pinMode(ENC_DT,  INPUT);
-  // SW dan button mendukung pull-up
-  pinMode(ENC_SW,  INPUT_PULLUP);
   pinMode(BTN_SEL, INPUT_PULLUP);
   pinMode(BTN_NAV, INPUT_PULLUP);
-
-  // Interrupt encoder pada CHANGE — lebih reliable daripada FALLING
-  attachInterrupt(digitalPinToInterrupt(ENC_CLK), onEncoderCLK, CHANGE);
 
   // ADS1015
   Wire.begin();
@@ -106,7 +64,6 @@ void setup() {
   ads.setGain(GAIN_ONE);
   ads.setDataRate(RATE_ADS1015_3300SPS);
 
-  // Calibrate baseline
   calibrateBaseline();
 
   for (int s = 0; s < NUM_SENSORS; s++) {
@@ -114,10 +71,8 @@ void setup() {
       thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3]);
   }
 
-  // Debug: print pin states untuk verifikasi wiring
-  Serial.printf("[DEBUG] CLK=%d DT=%d SW=%d SEL=%d NAV=%d\n",
-    digitalRead(ENC_CLK), digitalRead(ENC_DT),
-    digitalRead(ENC_SW), digitalRead(BTN_SEL), digitalRead(BTN_NAV));
+  Serial.printf("[DEBUG] SEL=%d NAV=%d\n",
+    digitalRead(BTN_SEL), digitalRead(BTN_NAV));
 
   Serial.println("[READY]");
 }
@@ -145,33 +100,7 @@ int computeLed(int sIdx, int16_t dev) {
   return 0;
 }
 
-// ── Cek encoder & button tanpa blocking ───────────────────────
-int  lastEncPos  = 0;
-
-void checkEncoder() {
-  // Encoder rotation
-  noInterrupts();
-  int pos = encPos;
-  interrupts();
-
-  if (pos != lastEncPos) {
-    int delta = pos - lastEncPos;
-    lastEncPos = pos;
-    // Kirim sekali per klik (bukan per delta — filter jitter)
-    if (delta > 0) Serial.println("[ENC]+1");
-    else           Serial.println("[ENC]-1");
-  }
-
-  // Encoder SW — debounce millis, non-blocking
-  unsigned long now = millis();
-  bool swNow = digitalRead(ENC_SW);
-  if (prevEncSw == HIGH && swNow == LOW && now - lastEncSwTime > DEBOUNCE_MS) {
-    lastEncSwTime = now;
-    Serial.println("[ENC]BTN");
-  }
-  prevEncSw = swNow;
-}
-
+// ── Cek button tanpa blocking ──────────────────────────────────
 void checkButtons() {
   unsigned long now = millis();
 
@@ -201,10 +130,8 @@ void handleCommand() {
       Serial.printf("[STATUS S%d] base=%d thr=%d|%d|%d|%d\n", s+1,
         baseline[s], thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3]);
     }
-    Serial.printf("[DEBUG] CLK=%d DT=%d SW=%d SEL=%d NAV=%d encPos=%d\n",
-      digitalRead(ENC_CLK), digitalRead(ENC_DT),
-      digitalRead(ENC_SW), digitalRead(BTN_SEL), digitalRead(BTN_NAV),
-      encPos);
+    Serial.printf("[DEBUG] SEL=%d NAV=%d\n",
+      digitalRead(BTN_SEL), digitalRead(BTN_NAV));
   }
   else if (cmd.startsWith("T") && cmd.length() >= 5 && cmd.indexOf('=') > 0) {
     int s  = cmd.charAt(1) - '1';
@@ -222,8 +149,7 @@ void handleCommand() {
 void loop() {
   unsigned long now = millis();
 
-  // 1. Encoder dan button — cek setiap loop (non-blocking)
-  checkEncoder();
+  // 1. Button — cek setiap loop (non-blocking)
   checkButtons();
 
   // 2. Baca sensor

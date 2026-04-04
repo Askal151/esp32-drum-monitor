@@ -12,13 +12,13 @@
   import {
     portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd,
-    hitEvent, encoderEvent, btnEvent,
+    hitEvent, btnEvent,
   } from './lib/serial.js';
   import { get } from 'svelte/store';
   import {
     SAMPLE_FNS, getSample,
-    sensorSamples, selectedSensor, encoderMode,
-    encRotate, encButton, saveSample, deleteSample,
+    sensorSamples, selectedSensor,
+    saveSample, deleteSample,
     btnNav, btnSel, showPicker,
   } from './lib/sampleStore.js';
 
@@ -58,18 +58,6 @@
       await ensureRunning();
       SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, e.velocity / 100);
     } catch {}
-  });
-
-  // ── Encoder HW-040 ─────────────────────────────────────────────
-  encoderEvent.subscribe(e => {
-    if (!e.ts) return;
-    if (e.btn) {
-      encButton();           // SW tekan → toggle mode sensor ↔ sample
-      tab = 'assign';        // auto-switch ke tab assign
-    } else {
-      encRotate(e.dir);
-      tab = 'assign';
-    }
   });
 
   // ── Button fizikal NAV / SEL ───────────────────────────────────
@@ -124,15 +112,6 @@
       {:else}
         <span class="text-xs text-slate-700">○ Idle</span>
       {/if}
-      <!-- Encoder mode indicator -->
-      <div
-        class="flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border transition-all"
-        class:animate-pulse={$encoderMode === 'sample'}
-        style="border-color:{$encoderMode === 'sample' ? '#f59e0b' : '#334155'}; color:{$encoderMode === 'sample' ? '#f59e0b' : '#64748b'}; background:{$encoderMode === 'sample' ? '#f59e0b18' : 'transparent'}"
-      >
-        <span>{$encoderMode === 'sensor' ? '🎛' : '🔊'}</span>
-        <span>{$encoderMode === 'sensor' ? 'Sensor' : 'Sample'}</span>
-      </div>
     </div>
     <div class="flex items-center gap-2">
       <button
@@ -193,7 +172,7 @@
           <button
             class="flex items-center gap-1 text-xs px-2 py-0.5 rounded border transition-colors"
             style="border-color:{sample.id ? sample.color+'44' : '#33415544'}; color:{sample.id ? sample.color : '#64748b'}; background:{sample.id ? sample.color+'11' : 'transparent'}"
-            on:click={() => { selectedSensor.set(i); encoderMode.set('sample'); tab = 'assign'; }}
+            on:click={() => { selectedSensor.set(i); showPicker(); tab = 'assign'; }}
             title="Klik untuk assign sample ke sensor ini"
           >
             <span>{sample.icon}</span>
