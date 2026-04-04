@@ -101,13 +101,11 @@ function _resetTimer() {
 // ── Button NAV ───────────────────────────────────────────────────
 export function btnNav(audioCtx = null) {
   const state = get(pickerState);
-  console.log('[STORE] btnNav called, state =', state);
 
   if (state === 'idle') {
     // Masuk mod pilih sensor, mulai dari 0
     selectedSensor.set(0);
     pickerState.set('sensor');
-    console.log('[STORE] pickerState → sensor');
 
   } else if (state === 'sensor') {
     // Cycle sensor: 0 → 1 → 2 → 3 → 0

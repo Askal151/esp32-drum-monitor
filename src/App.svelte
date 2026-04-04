@@ -62,15 +62,12 @@
 
   // ── Button fizikal NAV / SEL ───────────────────────────────────
   btnEvent.subscribe(e => {
-    console.log('[APP] btnEvent fired:', e);
     if (!e.ts) return;
     if (e.btn === 'NAV') {
-      console.log('[APP] NAV pressed → btnNav()');
       btnNav(isRunning() ? getAudioCtx() : null);
       tab = 'assign';
     }
     if (e.btn === 'SEL') {
-      console.log('[APP] SEL pressed → btnSel()');
       btnSel();
     }
   });

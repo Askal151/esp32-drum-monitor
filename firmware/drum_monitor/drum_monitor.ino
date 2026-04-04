@@ -185,15 +185,7 @@ void loop() {
     }
   }
 
-  // 5. Debug button state setiap 2 saat
-  static unsigned long lastBtnDebug = 0;
-  if (now - lastBtnDebug > 2000) {
-    lastBtnDebug = now;
-    Serial.printf("[BTN_STATE] NAV(GPIO26)=%d SEL(GPIO25)=%d\n",
-      digitalRead(BTN_NAV), digitalRead(BTN_SEL));
-  }
-
-  // 6. Cek command dari Serial
+  // 5. Cek command dari Serial
   handleCommand();
 
   delay(20);  // 50Hz — cukup untuk drum, elak overflow Web Serial
