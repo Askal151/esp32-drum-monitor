@@ -137,12 +137,12 @@ async function _autoReconnect() {
       _port = ports[0];
       try { await _port.close(); } catch {}
       await delay(200);
-      await _port.open({ baudRate: 115200 });
+      await _port.open({ baudRate: 115200, bufferSize: 16384 });
       _reader = _port.readable.getReader();
       _running = true; _reconnecting = false;
       connected.set(true); portState.set('monitor');
       emitRaw('[USB] Sambungan dipulihkan ✓', 'rx');
-      readLoop(); return;
+      await readLoop(); return;
     } catch (e) { await delay(1000); }
   }
   _reconnecting = false; portState.set('idle'); _port = null; _wantMonitor = false;
@@ -171,7 +171,7 @@ export async function connect() {
   try {
     _port = await navigator.serial.requestPort();
     if (_port.readable) { try { await _port.close(); } catch {}; await delay(300); }
-    await _port.open({ baudRate: 115200 });
+    await _port.open({ baudRate: 115200, bufferSize: 16384 });
     _reader = _port.readable.getReader();
     _running = true; _wantMonitor = true;
     connected.set(true); portState.set('monitor');

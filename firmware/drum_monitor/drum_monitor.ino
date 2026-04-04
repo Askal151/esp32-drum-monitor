@@ -188,5 +188,5 @@ void loop() {
   // 5. Cek command dari Serial
   handleCommand();
 
-  delay(3);
+  delay(20);  // 50Hz — cukup untuk drum, elak overflow Web Serial
 }
