@@ -80,8 +80,11 @@ export const sensorSamples = writable(_load() ?? [...DEFAULTS]);
 export const selectedSensor = writable(0);
 
 // Posisi kursor di SAMPLES[] per sensor (untuk preview sebelum save)
-// Default sesuai posisi DEFAULTS dalam SAMPLES
-const _defaultCursor = DEFAULTS.map(id => SAMPLES.findIndex(s => s.id === id));
+// Jika sensor belum ada sample, mulai di index 0 (sample pertama)
+const _defaultCursor = DEFAULTS.map(id => {
+  const idx = SAMPLES.findIndex(s => s.id === id);
+  return idx >= 0 ? idx : 0;
+});
 export const cursorIdx = writable([..._defaultCursor]);
 
 // ── Picker visibility (dipapar apabila button NAV/SEL ditekan) ──
@@ -105,22 +108,29 @@ export function hidePicker() {
 // btnNav — tekan button NAV: navigasi ke sample seterusnya + preview + tunjuk picker
 export function btnNav(audioCtx = null) {
   const sensor = get(selectedSensor);
+  const current = get(cursorIdx);
+  const nextIdx = (current[sensor] + 1) % SAMPLES.length;
+
   cursorIdx.update(arr => {
     const next = [...arr];
-    next[sensor] = (next[sensor] + 1) % SAMPLES.length;
-    // Preview bunyi sample baru
-    if (audioCtx) {
-      const id = SAMPLES[next[sensor]].id;
-      try { SAMPLE_FNS[id]?.(audioCtx.currentTime, 0.6); } catch {}
-    }
+    next[sensor] = nextIdx;
     return next;
   });
+
+  // Preview bunyi sample (di luar update callback)
+  if (audioCtx) {
+    try { SAMPLE_FNS[SAMPLES[nextIdx].id]?.(audioCtx.currentTime, 0.6); } catch {}
+  }
+
   showPicker();
 }
 
 // btnSel — tekan button SEL: simpan sample kursor ke sensor aktif + tutup picker
 export function btnSel() {
   const sensor = get(selectedSensor);
+  const cursor = get(cursorIdx)[sensor];
+  // Guard: pastikan cursor valid
+  if (cursor < 0 || cursor >= SAMPLES.length) return;
   saveSample(sensor);
   hidePicker();
 }

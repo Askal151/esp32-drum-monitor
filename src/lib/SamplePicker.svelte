@@ -9,7 +9,7 @@
   import {
     SAMPLES, getSample,
     sensorSamples, selectedSensor, cursorIdx,
-    pickerVisible, hidePicker, saveSample,
+    pickerVisible, hidePicker, saveSample, showPicker,
   } from './sampleStore.js';
 
   const SENSOR_NAMES  = ['SNARE', 'KICK', 'TOM', 'HI-HAT'];
@@ -84,7 +84,11 @@
                 : isSaved
                   ? `color:${sample.color}`
                   : 'color:#64748b'}
-              on:click={() => { saveSample($selectedSensor); hidePicker(); }}
+              on:click={() => {
+                cursorIdx.update(arr => { const n=[...arr]; n[$selectedSensor]=idx; return n; });
+                saveSample($selectedSensor);
+                hidePicker();
+              }}
             >
               <!-- Indicator -->
               {#if isCursor}
