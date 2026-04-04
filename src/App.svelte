@@ -37,6 +37,10 @@
   hitEvent.subscribe(async e => {
     if (e.idx < 0 || !e.ts) return;
 
+    // Sensor kosong → abaikan sepenuhnya (tiada bunyi, tiada counter)
+    const sampleId = get(sensorSamples)[e.idx];
+    if (!sampleId) return;
+
     // Counter & BPM
     hits[e.idx]++;
     hits = [...hits];
@@ -50,11 +54,9 @@
       bpm = [...bpm];
     }
 
-    // Play sample yang di-assign ke sensor ini (skip jika belum ada sample)
+    // Play sample
     if (!audioEnabled) return;
     try {
-      const sampleId = get(sensorSamples)[e.idx];
-      if (!sampleId) return;               // sensor kosong → senyap
       await ensureRunning();
       SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, e.velocity / 100);
     } catch {}
@@ -192,14 +194,15 @@
           </button>
         </div>
         <DrumPad
-          idx   = {i}
-          name  = {NAMES[i]}
-          color = {CLR[i]}
-          adc   = {s.adc}
-          dev   = {s.dev}
-          led   = {s.led}
-          hits  = {hits[i]}
-          bpm   = {bpm[i]}
+          idx       = {i}
+          name      = {NAMES[i]}
+          color     = {CLR[i]}
+          adc       = {s.adc}
+          dev       = {s.dev}
+          led       = {s.led}
+          hits      = {hits[i]}
+          bpm       = {bpm[i]}
+          hasSample = {!!sample.id}
         />
       </div>
     {/each}

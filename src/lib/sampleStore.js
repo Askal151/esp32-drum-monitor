@@ -68,7 +68,7 @@ export const SAMPLE_FNS = {
 
 // ── Persistence ─────────────────────────────────────────────────
 const DEFAULTS     = [null, null, null, null];
-const STORAGE_KEY  = 'drum_sensor_samples_v1';
+const STORAGE_KEY  = 'drum_sensor_samples_v2';
 function _load()         { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch { return null; } }
 function _persist(arr)   { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(arr)); } catch {} }
 

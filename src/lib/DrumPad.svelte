@@ -11,8 +11,9 @@
   export let adc   = 0;
   export let dev   = 0;
   export let led   = 0;
-  export let hits  = 0;
-  export let bpm   = 0;
+  export let hits      = 0;
+  export let bpm       = 0;
+  export let hasSample = false;
 
   let canvas, ctx, rafId;
   let W = 0, H = 0;
@@ -27,6 +28,7 @@
 
   function onHit(e) {
     if (e.idx !== idx) return;
+    if (!hasSample) return;  // sensor kosong → tiada animasi
     glowAlpha = 1;
     ringScale = 1;
     velocity  = e.velocity;
