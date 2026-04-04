@@ -80,18 +80,11 @@ export const selectedSensor = writable(0);
 export const cursorIdx = writable([0, 0, 0, 0]);
 
 // ── State machine ────────────────────────────────────────────────
-// States: 'idle' | 'sensor' | 'action' | 'sample'
+// States: 'idle' | 'sensor' | 'sample'
 export const pickerState = writable('idle');
 
-// Tindakan: 0 = Pasang Sample, 1 = Buang Sample
-export const actionCursor = writable(0);
-export const ACTIONS = [
-  { id: 'assign', label: 'Pasang Sample', icon: '🎵' },
-  { id: 'remove', label: 'Buang Sample',  icon: '🗑' },
-];
-
-// Auto-cancel selepas 8 saat tiada aksi
-const IDLE_TIMEOUT = 8000;
+// Auto-cancel selepas 10 saat tiada aksi
+const IDLE_TIMEOUT = 10000;
 let _idleTimer = null;
 function _resetTimer() {
   clearTimeout(_idleTimer);
@@ -103,7 +96,7 @@ export function btnNav(audioCtx = null) {
   const state = get(pickerState);
 
   if (state === 'idle') {
-    // Masuk mod pilih sensor, mulai dari 0
+    // Masuk pilih sensor, mulai dari sensor 0
     selectedSensor.set(0);
     pickerState.set('sensor');
 
@@ -111,14 +104,10 @@ export function btnNav(audioCtx = null) {
     // Cycle sensor: 0 → 1 → 2 → 3 → 0
     selectedSensor.update(i => (i + 1) % 4);
 
-  } else if (state === 'action') {
-    // Toggle antara Pasang / Buang
-    actionCursor.update(i => (i + 1) % ACTIONS.length);
-
   } else if (state === 'sample') {
     // Next sample + preview bunyi
-    const sensor   = get(selectedSensor);
-    const nextIdx  = (get(cursorIdx)[sensor] + 1) % SAMPLES.length;
+    const sensor  = get(selectedSensor);
+    const nextIdx = (get(cursorIdx)[sensor] + 1) % SAMPLES.length;
     cursorIdx.update(arr => { const n = [...arr]; n[sensor] = nextIdx; return n; });
     if (audioCtx) {
       try { SAMPLE_FNS[SAMPLES[nextIdx].id]?.(audioCtx.currentTime, 0.6); } catch {}
@@ -136,25 +125,11 @@ export function btnSel() {
     return;
 
   } else if (state === 'sensor') {
-    // Sensor dipilih → pergi ke pilih tindakan
-    actionCursor.set(0);
-    pickerState.set('action');
-
-  } else if (state === 'action') {
-    const action = ACTIONS[get(actionCursor)];
-    if (action.id === 'assign') {
-      // Pergi ke pilih sample
-      pickerState.set('sample');
-    } else {
-      // Buang sample dari sensor ini
-      deleteSample(get(selectedSensor));
-      pickerState.set('idle');
-      clearTimeout(_idleTimer);
-      return;
-    }
+    // Terus masuk pilih sample untuk sensor ini
+    pickerState.set('sample');
 
   } else if (state === 'sample') {
-    // Simpan sample kursor ke sensor
+    // Simpan sample ke sensor, tutup picker
     saveSample(get(selectedSensor));
     pickerState.set('idle');
     clearTimeout(_idleTimer);
@@ -167,7 +142,6 @@ export function btnSel() {
 // ── Shortcut: buka picker terus ke pilih sensor ─────────────────
 export function openPicker() {
   selectedSensor.set(0);
-  actionCursor.set(0);
   pickerState.set('sensor');
   _resetTimer();
 }

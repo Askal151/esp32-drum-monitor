@@ -1,13 +1,13 @@
 <!--
   SamplePicker.svelte — Floating overlay state machine
-  State: idle | sensor | action | sample
+  State: idle | sensor | sample
   NAV = navigate  •  SEL = confirm/OK
 -->
 <script>
   import { fly, fade } from 'svelte/transition';
   import {
-    SAMPLES, ACTIONS, getSample,
-    sensorSamples, selectedSensor, cursorIdx, actionCursor,
+    SAMPLES, getSample,
+    sensorSamples, selectedSensor, cursorIdx,
     pickerState, closePicker,
     saveSample, deleteSample,
   } from './sampleStore.js';
@@ -19,16 +19,13 @@
 
   $: visible = $pickerState !== 'idle';
 
-  // ── Label breadcrumb header ──────────────────────────────────
   $: headerLabel = {
     sensor: 'Pilih Sensor',
-    action: SENSOR_NAMES[$selectedSensor],
     sample: SENSOR_NAMES[$selectedSensor] + ' › Pilih Sample',
   }[$pickerState] ?? '';
 
   $: headerSub = {
-    sensor: 'NAV = tukar sensor  •  SEL = OK',
-    action: 'NAV = tukar tindakan  •  SEL = OK',
+    sensor: 'NAV = tukar sensor  •  SEL = pilih',
     sample: 'NAV = tukar sample  •  SEL = simpan',
   }[$pickerState] ?? '';
 
@@ -40,29 +37,15 @@
     item?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
-  // Klik sensor terus dari panel sensor
   function clickSensor(i) {
     selectedSensor.set(i);
-    actionCursor.set(0);
-    pickerState.set('action');
+    pickerState.set('sample');
   }
 
-  // Klik sample terus dari panel sample
   function clickSample(idx) {
     cursorIdx.update(arr => { const n = [...arr]; n[$selectedSensor] = idx; return n; });
     saveSample($selectedSensor);
     closePicker();
-  }
-
-  // Klik tindakan terus
-  function clickAction(actionIdx) {
-    const action = ACTIONS[actionIdx];
-    if (action.id === 'assign') {
-      pickerState.set('sample');
-    } else {
-      deleteSample($selectedSensor);
-      closePicker();
-    }
   }
 </script>
 
@@ -112,48 +95,13 @@
             <div class="text-xs mt-0.5 truncate" style="color:{saved.id ? saved.color : '#475569'}">
               {saved.label}
             </div>
-            {#if isActive}
-              <div class="mt-1.5 text-xs font-bold" style="color:{SENSOR_COLORS[i]}">▶ dipilih</div>
+            {#if saved.id}
+              <div class="mt-1 text-xs" style="color:{SENSOR_COLORS[i]}88">ada sample</div>
+            {:else}
+              <div class="mt-1 text-xs text-slate-700">kosong</div>
             {/if}
-          </button>
-        {/each}
-      </div>
-
-    <!-- ── STATE: ACTION ── -->
-    {:else if $pickerState === 'action'}
-      <div class="p-3 flex flex-col gap-2">
-        <!-- Info sensor aktif -->
-        {#each [getSample($sensorSamples[$selectedSensor])] as saved}
-        <div class="px-3 py-2 rounded-lg bg-slate-900 flex items-center gap-2 mb-1">
-          <span class="text-base">{SENSOR_ICONS[$selectedSensor]}</span>
-          <div>
-            <div class="text-xs font-bold" style="color:{SENSOR_COLORS[$selectedSensor]}">
-              {SENSOR_NAMES[$selectedSensor]}
-            </div>
-            <div class="text-xs" style="color:{saved.id ? saved.color : '#475569'}">{saved.label}</div>
-          </div>
-        </div>
-        {/each}
-
-        <!-- Pilihan tindakan -->
-        {#each ACTIONS as action, i}
-          {@const isActive = $actionCursor === i}
-          <button
-            class="rounded-xl border-2 px-4 py-3 flex items-center gap-3 transition-all text-left"
-            style="border-color:{isActive ? (i === 0 ? '#22d3ee' : '#ef4444') : '#1e293b'};
-                   background:{isActive ? (i === 0 ? '#22d3ee18' : '#ef444418') : '#0f172a'};
-                   color:{isActive ? (i === 0 ? '#22d3ee' : '#ef4444') : '#64748b'}"
-            on:click={() => clickAction(i)}
-          >
-            <span class="text-xl">{action.icon}</span>
-            <div>
-              <div class="text-sm font-bold">{action.label}</div>
-              <div class="text-xs opacity-60">
-                {i === 0 ? 'Pilih & simpan sample baru' : 'Kosongkan sensor ini'}
-              </div>
-            </div>
             {#if isActive}
-              <span class="ml-auto text-xs font-bold">◀</span>
+              <div class="mt-1 text-xs font-bold" style="color:{SENSOR_COLORS[i]}">▶ dipilih</div>
             {/if}
           </button>
         {/each}
@@ -161,6 +109,21 @@
 
     <!-- ── STATE: SAMPLE ── -->
     {:else if $pickerState === 'sample'}
+      <!-- Info sensor + butang kosongkan -->
+      <div class="px-3 pt-2 pb-1 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2">
+          <span>{SENSOR_ICONS[$selectedSensor]}</span>
+          {@const saved = getSample($sensorSamples[$selectedSensor])}
+          <span class="text-xs" style="color:{saved.id ? saved.color : '#475569'}">{saved.label}</span>
+        </div>
+        {#if $sensorSamples[$selectedSensor]}
+          <button
+            class="text-xs px-2 py-0.5 rounded border border-red-900 text-red-500 hover:bg-red-950 transition-colors"
+            on:click={() => { deleteSample($selectedSensor); closePicker(); }}
+          >Kosongkan</button>
+        {/if}
+      </div>
+
       <div class="flex-1 overflow-y-auto min-h-0 py-1" bind:this={sampleListEl}>
         {#each GROUPS as group}
           <div class="px-3 py-1 text-xs text-slate-700 font-bold tracking-wide uppercase sticky top-0 bg-[#080b12]">
@@ -205,7 +168,7 @@
         <kbd class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono text-xs">SEL</kbd>
         <span>ok</span>
       </div>
-      <span class="ml-auto text-xs text-slate-800">auto-cancel 8s</span>
+      <span class="ml-auto text-xs text-slate-800">auto-cancel 10s</span>
     </div>
   </div>
 {/if}
