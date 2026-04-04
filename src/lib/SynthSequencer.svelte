@@ -29,7 +29,7 @@
   let bpm   = 120;
   let playing   = false;
   let curStep   = -1;
-  let sensorMode = true;
+  let sensorMode = false;
   let vel        = 0.7;
   let selPreset  = 'Acid House';
 

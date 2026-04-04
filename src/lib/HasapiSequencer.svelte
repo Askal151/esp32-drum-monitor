@@ -65,7 +65,7 @@
   let selPreset  = 'Sidabu Petek';
   let noteDur    = 0.3;   // tempoh bunyi setiap nota (saat)
   let vels       = NOTES.map(() => 0.75);
-  let sensorMode = true;
+  let sensorMode = false;
 
   // Sensor 4 (idx=3, Hi-Hat) → auto start/stop Hasapi
   const unsubSensor = sensors.subscribe(arr => {

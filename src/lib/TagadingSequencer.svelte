@@ -59,7 +59,7 @@
   let curStep    = -1;
   let selPreset  = 'Sidabu Petek';
   let vels       = TRACKS.map(() => 0.8);
-  let sensorMode = true;
+  let sensorMode = false;
 
   // Sensor 3 (idx=2, Tom) → auto start/stop Tagading
   const unsubSensor = sensors.subscribe(arr => {
