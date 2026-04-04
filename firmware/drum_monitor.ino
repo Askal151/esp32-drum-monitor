@@ -2,8 +2,8 @@
  * drum_monitor.ino — ESP32 Drum Monitor
  * Sensor: 4x Hall Effect via ADS1015 (A0–A3)
  * Encoder: HW-040 Rotary Encoder (CLK=34, DT=35, SW=27)
- * Button SAVE:   GPIO 25
- * Button DELETE: GPIO 26
+ * Button NAV:    GPIO 26  ← tekan untuk navigasi ke sample berikutnya
+ * Button SELECT: GPIO 25  ← tekan untuk confirm/simpan sample
  *
  * CATATAN PIN:
  *   GPIO 34/35 = INPUT ONLY, tidak ada internal pull-up (HW-040 sudah ada pull-up sendiri)
@@ -14,8 +14,8 @@
  *   [ENC]+1   — encoder putar kanan
  *   [ENC]-1   — encoder putar kiri
  *   [ENC]BTN  — encoder SW ditekan
- *   [BTN]SAVE — button SAVE ditekan
- *   [BTN]DEL  — button DELETE ditekan
+ *   [BTN]NAV  — button NAV ditekan (GPIO 26) → next sample
+ *   [BTN]SEL  — button SELECT ditekan (GPIO 25) → confirm/simpan sample
  */
 
 #include <Wire.h>
@@ -30,8 +30,8 @@ Adafruit_ADS1015 ads;
 #define ENC_SW  27   // Mendukung INPUT_PULLUP
 
 // ── Pin Push Button (active LOW) ───────────────────────────────
-#define BTN_SAVE 25
-#define BTN_DEL  26
+#define BTN_SEL 25   // SELECT — confirm/simpan sample
+#define BTN_NAV 26   // NAV    — navigasi ke sample berikutnya
 
 // ── Sensor config ──────────────────────────────────────────────
 #define NUM_SENSORS 4
@@ -74,11 +74,11 @@ void IRAM_ATTR onEncoderCLK() {
 
 // ── Debounce non-blocking ──────────────────────────────────────
 unsigned long lastEncSwTime  = 0;
-unsigned long lastSaveTime   = 0;
-unsigned long lastDelTime    = 0;
+unsigned long lastSelTime    = 0;
+unsigned long lastNavTime    = 0;
 bool prevEncSw   = HIGH;
-bool prevBtnSave = HIGH;
-bool prevBtnDel  = HIGH;
+bool prevBtnSel  = HIGH;
+bool prevBtnNav  = HIGH;
 #define DEBOUNCE_MS 80
 
 // ── Setup ──────────────────────────────────────────────────────
@@ -91,8 +91,8 @@ void setup() {
   pinMode(ENC_DT,  INPUT);
   // SW dan button mendukung pull-up
   pinMode(ENC_SW,  INPUT_PULLUP);
-  pinMode(BTN_SAVE, INPUT_PULLUP);
-  pinMode(BTN_DEL,  INPUT_PULLUP);
+  pinMode(BTN_SEL, INPUT_PULLUP);
+  pinMode(BTN_NAV, INPUT_PULLUP);
 
   // Interrupt encoder pada CHANGE — lebih reliable daripada FALLING
   attachInterrupt(digitalPinToInterrupt(ENC_CLK), onEncoderCLK, CHANGE);
@@ -115,9 +115,9 @@ void setup() {
   }
 
   // Debug: print pin states untuk verifikasi wiring
-  Serial.printf("[DEBUG] CLK=%d DT=%d SW=%d SAVE=%d DEL=%d\n",
+  Serial.printf("[DEBUG] CLK=%d DT=%d SW=%d SEL=%d NAV=%d\n",
     digitalRead(ENC_CLK), digitalRead(ENC_DT),
-    digitalRead(ENC_SW), digitalRead(BTN_SAVE), digitalRead(BTN_DEL));
+    digitalRead(ENC_SW), digitalRead(BTN_SEL), digitalRead(BTN_NAV));
 
   Serial.println("[READY]");
 }
@@ -175,19 +175,19 @@ void checkEncoder() {
 void checkButtons() {
   unsigned long now = millis();
 
-  bool saveNow = digitalRead(BTN_SAVE);
-  if (prevBtnSave == HIGH && saveNow == LOW && now - lastSaveTime > DEBOUNCE_MS) {
-    lastSaveTime = now;
-    Serial.println("[BTN]SAVE");
+  bool selNow = digitalRead(BTN_SEL);
+  if (prevBtnSel == HIGH && selNow == LOW && now - lastSelTime > DEBOUNCE_MS) {
+    lastSelTime = now;
+    Serial.println("[BTN]SEL");
   }
-  prevBtnSave = saveNow;
+  prevBtnSel = selNow;
 
-  bool delNow = digitalRead(BTN_DEL);
-  if (prevBtnDel == HIGH && delNow == LOW && now - lastDelTime > DEBOUNCE_MS) {
-    lastDelTime = now;
-    Serial.println("[BTN]DEL");
+  bool navNow = digitalRead(BTN_NAV);
+  if (prevBtnNav == HIGH && navNow == LOW && now - lastNavTime > DEBOUNCE_MS) {
+    lastNavTime = now;
+    Serial.println("[BTN]NAV");
   }
-  prevBtnDel = delNow;
+  prevBtnNav = navNow;
 }
 
 // ── Serial command handler ─────────────────────────────────────
@@ -201,9 +201,9 @@ void handleCommand() {
       Serial.printf("[STATUS S%d] base=%d thr=%d|%d|%d|%d\n", s+1,
         baseline[s], thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3]);
     }
-    Serial.printf("[DEBUG] CLK=%d DT=%d SW=%d SAVE=%d DEL=%d encPos=%d\n",
+    Serial.printf("[DEBUG] CLK=%d DT=%d SW=%d SEL=%d NAV=%d encPos=%d\n",
       digitalRead(ENC_CLK), digitalRead(ENC_DT),
-      digitalRead(ENC_SW), digitalRead(BTN_SAVE), digitalRead(BTN_DEL),
+      digitalRead(ENC_SW), digitalRead(BTN_SEL), digitalRead(BTN_NAV),
       encPos);
   }
   else if (cmd.startsWith("T") && cmd.length() >= 5 && cmd.indexOf('=') > 0) {

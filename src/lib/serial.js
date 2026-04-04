@@ -24,7 +24,7 @@ export const hitEvent   = writable({ idx: -1, velocity: 0, ts: 0 });  // trigger
 
 // ── Encoder & Button events ─────────────────────────────────────
 export const encoderEvent = writable({ dir: 0, ts: 0 });   // dir: +1 atau -1
-export const btnEvent     = writable({ btn: '', ts: 0 });   // btn: 'SAVE' atau 'DEL'
+export const btnEvent     = writable({ btn: '', ts: 0 });   // btn: 'NAV' atau 'SEL'
 
 export const plotBuf = [
   { adc: new Array(MAX_POINTS).fill(0), dev: new Array(MAX_POINTS).fill(0) },
@@ -52,7 +52,7 @@ const RX_THR3 = /\[THRESH3\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
 const RX_THR4 = /\[THRESH4\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
 const RX_BASE = /\[(?:AUTO|CAL|INIT)\s*S(\d)\].*?(\d+)\s*$/;
 const RX_ENC  = /\[ENC\]([+\-]\d+|BTN)/;
-const RX_BTN  = /\[BTN\](SAVE|DEL)/;
+const RX_BTN  = /\[BTN\](NAV|SEL)/;
 
 // ── State ───────────────────────────────────────────────────────
 let _port = null, _reader = null, _running = false, _lineBuf = '';

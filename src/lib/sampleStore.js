@@ -2,8 +2,8 @@
  * sampleStore.js — Per-sensor sample assignment
  * Encoder navigasi: mode 'sensor' (pilih sensor) atau 'sample' (pilih sample)
  * Encoder SW   → toggle mode
- * Button SAVE  → simpan sample cursor ke sensor aktif
- * Button DEL   → reset sensor ke default
+ * Button NAV (GPIO 26)  → navigasi ke sample berikutnya + preview + tunjuk picker
+ * Button SEL (GPIO 25)  → confirm/simpan sample kursor ke sensor aktif
  */
 import { writable, get } from 'svelte/store';
 
@@ -89,6 +89,23 @@ export const encoderMode = writable('sensor');
 const _defaultCursor = DEFAULTS.map(id => SAMPLES.findIndex(s => s.id === id));
 export const cursorIdx = writable([..._defaultCursor]);
 
+// ── Picker visibility (dipapar apabila button NAV/SEL ditekan) ──
+// auto-hide selepas PICKER_TIMEOUT ms tanpa aktiviti
+const PICKER_TIMEOUT = 5000;
+export const pickerVisible = writable(false);
+let _pickerTimer = null;
+
+export function showPicker() {
+  pickerVisible.set(true);
+  clearTimeout(_pickerTimer);
+  _pickerTimer = setTimeout(() => pickerVisible.set(false), PICKER_TIMEOUT);
+}
+
+export function hidePicker() {
+  clearTimeout(_pickerTimer);
+  pickerVisible.set(false);
+}
+
 // ── Encoder actions ─────────────────────────────────────────────
 export function encRotate(dir) {
   const mode = get(encoderMode);
@@ -106,6 +123,30 @@ export function encRotate(dir) {
 
 export function encButton() {
   encoderMode.update(m => m === 'sensor' ? 'sample' : 'sensor');
+}
+
+// ── Button NAV / SEL actions ─────────────────────────────────────
+// btnNav — tekan button NAV: navigasi ke sample seterusnya + preview + tunjuk picker
+export function btnNav(audioCtx = null) {
+  const sensor = get(selectedSensor);
+  cursorIdx.update(arr => {
+    const next = [...arr];
+    next[sensor] = (next[sensor] + 1) % SAMPLES.length;
+    // Preview bunyi sample baru
+    if (audioCtx) {
+      const id = SAMPLES[next[sensor]].id;
+      try { SAMPLE_FNS[id]?.(audioCtx.currentTime, 0.6); } catch {}
+    }
+    return next;
+  });
+  showPicker();
+}
+
+// btnSel — tekan button SEL: simpan sample kursor ke sensor aktif + tutup picker
+export function btnSel() {
+  const sensor = get(selectedSensor);
+  saveSample(sensor);
+  hidePicker();
 }
 
 // ── Save / Delete ───────────────────────────────────────────────

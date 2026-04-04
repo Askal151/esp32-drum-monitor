@@ -7,6 +7,7 @@
   import TagadingSequencer from './lib/TagadingSequencer.svelte';
   import HasapiSequencer   from './lib/HasapiSequencer.svelte';
   import SampleAssign      from './lib/SampleAssign.svelte';
+  import SamplePicker      from './lib/SamplePicker.svelte';
   import { unlockAudio, isRunning, getAudioCtx, ensureRunning } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount,
@@ -18,6 +19,7 @@
     SAMPLE_FNS, getSample,
     sensorSamples, selectedSensor, encoderMode,
     encRotate, encButton, saveSample, deleteSample,
+    btnNav, btnSel, showPicker,
   } from './lib/sampleStore.js';
 
   const CLR   = ['#22d3ee', '#4ade80', '#f59e0b', '#f472b6'];
@@ -70,12 +72,11 @@
     }
   });
 
-  // ── Button fisik SAVE / DELETE ─────────────────────────────────
+  // ── Button fizikal NAV / SEL ───────────────────────────────────
   btnEvent.subscribe(e => {
     if (!e.ts) return;
-    const si = get(selectedSensor);
-    if (e.btn === 'SAVE') saveSample(si);
-    if (e.btn === 'DEL')  deleteSample(si);
+    if (e.btn === 'NAV') { btnNav(audioReady ? getAudioCtx() : null); tab = 'assign'; }
+    if (e.btn === 'SEL') { btnSel(); }
   });
 
   async function toggleConn() {
@@ -143,6 +144,11 @@
         title="Toggle suara drum"
       >{!audioReady ? '⚠ Aktifkan Audio' : audioEnabled ? '🔊 Audio' : '🔇 Mute'}</button>
 
+      <button
+        class="text-xs px-3 py-1.5 rounded-md font-bold ring-1 transition-all bg-amber-950 text-amber-400 ring-amber-900 hover:bg-amber-900"
+        on:click={showPicker}
+        title="Pilih sample untuk sensor aktif (shortcut button NAV/SEL)"
+      >🎵 Pilih Sample</button>
       {#if $connected}
         <button class="btn-gray" on:click={() => sendCmd('s')}>📋 Status</button>
         <button class="btn-gray" on:click={() => sendCmd('r')}>↺ Reset</button>
@@ -262,3 +268,6 @@
   </footer>
 
 </div>
+
+<!-- Floating Sample Picker — muncul bila button NAV/SEL ditekan -->
+<SamplePicker />
