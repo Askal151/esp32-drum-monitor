@@ -62,13 +62,15 @@
 
   // ── Button fizikal NAV / SEL ───────────────────────────────────
   btnEvent.subscribe(e => {
+    console.log('[APP] btnEvent fired:', e);
     if (!e.ts) return;
     if (e.btn === 'NAV') {
-      // Baca isRunning() secara langsung untuk elak stale closure
+      console.log('[APP] NAV pressed → btnNav()');
       btnNav(isRunning() ? getAudioCtx() : null);
       tab = 'assign';
     }
     if (e.btn === 'SEL') {
+      console.log('[APP] SEL pressed → btnSel()');
       btnSel();
     }
   });
@@ -99,9 +101,16 @@
   function rstart(e) { resizing=true; ry0=e.clientY; rh0=panelH; e.preventDefault(); }
   function rmove(e)  { if(resizing) panelH=Math.max(200,Math.min(700,rh0+ry0-e.clientY)); }
   function rend()    { resizing=false; }
+
+  // Keyboard shortcut untuk test: N = NAV, S = SEL
+  function onKeydown(e) {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === 'n' || e.key === 'N') { btnNav(isRunning() ? getAudioCtx() : null); tab = 'assign'; }
+    if (e.key === 's' || e.key === 'S') { btnSel(); }
+  }
 </script>
 
-<svelte:window on:mousemove={rmove} on:mouseup={rend} />
+<svelte:window on:mousemove={rmove} on:mouseup={rend} on:keydown={onKeydown} />
 
 <div class="min-h-screen bg-[#080b12] text-slate-300 p-3 flex flex-col gap-3">
 

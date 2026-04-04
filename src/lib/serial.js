@@ -118,50 +118,50 @@ async function readLoop() {
       break;
     }
   }
-  if (_running && _wantMonitor && !_reconnecting) {
-    _running = false; connected.set(false);
-    emitRaw('[SISTEM] Sambungan hilang — tunggu USB...', 'rx');
-    try { _reader?.releaseLock(); } catch {}
-    _reader = null;
-    if (_port) { try { await _port.close(); } catch {}; await delay(800); await _autoReconnect(); }
-  }
+  // Cleanup — jangan panggil _autoReconnect dari sini (elak infinite recursion)
+  _running = false;
+  try { _reader?.releaseLock(); } catch {}
+  _reader = null;
+  try { await _port?.close(); } catch {}
+  _port = null;
 }
 
 async function _autoReconnect() {
   if (_reconnecting) return;
   _reconnecting = true;
-  for (let attempt = 1; attempt <= 10; attempt++) {
+  connected.set(false);
+  emitRaw('[SISTEM] Sambungan hilang — cuba reconnect...', 'rx');
+
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    await delay(1500);
     try {
       const ports = await navigator.serial.getPorts();
-      if (!ports.length) { emitRaw(`[USB] Tiada port (${attempt}/10)`, 'rx'); await delay(1000); continue; }
+      if (!ports.length) { emitRaw(`[USB] Tiada port (${attempt}/5)`, 'rx'); continue; }
       _port = ports[0];
-      try { await _port.close(); } catch {}
-      await delay(200);
       await _port.open({ baudRate: 115200, bufferSize: 16384 });
       _reader = _port.readable.getReader();
       _running = true; _reconnecting = false;
       connected.set(true); portState.set('monitor');
       emitRaw('[USB] Sambungan dipulihkan ✓', 'rx');
-      await readLoop(); return;
-    } catch (e) { await delay(1000); }
+      readLoop(); // fire-and-forget, jangan await (elak recursive call)
+      return;
+    } catch (e) { /* cuba lagi */ }
   }
-  _reconnecting = false; portState.set('idle'); _port = null; _wantMonitor = false;
+  _reconnecting = false; portState.set('idle'); _wantMonitor = false;
   emitRaw('[SISTEM] Reconnect gagal — klik Sambung semula', 'rx');
 }
 
 if (typeof navigator !== 'undefined' && navigator.serial) {
   navigator.serial.addEventListener('disconnect', e => {
-    if (e.target === _port) {
-      _running = false; connected.set(false);
+    if (_running) {
+      _running = false;
       emitRaw('[USB] Peranti terputus...', 'rx');
-      try { _reader?.releaseLock(); } catch {}
-      _reader = null; _port = null;
     }
   });
   navigator.serial.addEventListener('connect', async () => {
     if (_wantMonitor && !_running && !_reconnecting) {
       emitRaw('[USB] Peranti disambung semula...', 'rx');
-      await delay(600); await _autoReconnect();
+      await delay(800); _autoReconnect();
     }
   });
 }
