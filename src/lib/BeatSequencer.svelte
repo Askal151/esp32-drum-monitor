@@ -9,7 +9,6 @@
     scheduleKick, scheduleSnare, scheduleHihat,
     scheduleClap, scheduleRim, getAudioCtx, ensureRunning, isRunning, unlockAudio
   } from './audio.js';
-  import { hitEvent, sensors } from './serial.js';
 
   const STEPS   = 16;
   const TRACKS  = [
@@ -63,24 +62,15 @@
   let pattern = TRACKS.map(t => new Array(STEPS).fill(0));
   let bpm       = 120;
   let playing   = false;
-  let sensorMode = true;   // sensor trigger step sequencer
+  let sensorMode = false;   // sensor trigger step sequencer
   let curStep   = -1;
   let selPreset = 'Basic';
 
   // Velocity per track (0.0–1.0)
   let vels = TRACKS.map(() => 0.8);
 
-  // ── Sensor auto-play ───────────────────────────────────────────
-  // Mana-mana sensor kesan magnet (LED > 0) → sequencer mula
-  // Semua sensor LED = 0 → sequencer berhenti
-
-  // Hanya Sensor 1 (idx=0) yang kawalan sequencer
-  const unsubHit = sensors.subscribe(arr => {
-    if (!sensorMode) return;
-    const s1Active = arr[0]?.led > 0;
-    if (s1Active && !playing) start();
-    else if (!s1Active && playing) stop();
-  });
+  // (sensorMode dimatikan — sensor kini main sample terus, bukan kawalan sequencer)
+  const unsubHit = { unsubscribe: () => {} };
 
   // Load preset
   function loadPreset(name) {
@@ -153,7 +143,7 @@
     _timerId = setTimeout(scheduler, 0);
   }
 
-  onDestroy(() => { clearTimeout(_timerId); unsubHit(); });
+  onDestroy(() => { clearTimeout(_timerId); });
 
   export function getSnapshot() {
     return { pattern: pattern.map(t => [...t]), vels: [...vels], bpm, selPreset };
