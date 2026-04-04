@@ -33,15 +33,96 @@
   let bpm  = [0, 0, 0, 0];
   const hitTimes = [[], [], [], []];
 
-  // ── Hit counter, BPM, dan play sample ─────────────────────────
+  // ── Beat engine ────────────────────────────────────────────────
+  // Setiap sensor boleh loop sample-nya sebagai beat secara bebas
+  let beatBpm    = 120;
+  let beatActive = [false, false, false, false];
+  let beatStep   = 0;   // step semasa (0–15), untuk paparan
+
+  // Pola beat default mengikut jenis sample (16 langkah, 16th notes)
+  const BEAT_PATTERNS = {
+    kick:     [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0],
+    snare:    [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
+    hihat:    [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
+    clap:     [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
+    rim:      [0,0,1,0, 0,0,1,0, 0,0,1,0, 0,0,1,0],
+    taganing: [1,0,0,1, 0,0,1,0, 1,0,0,1, 0,0,1,0],
+    odap:     [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
+    hesek:    [1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1],
+    gordang:  [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+    syn_c3:   [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+    syn_e3:   [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+    syn_g3:   [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+    syn_a3:   [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+    syn_c4:   [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+    has_d4:   [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
+    has_e4:   [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
+    has_g4:   [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
+    has_a4:   [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
+  };
+
+  // Internal scheduler state
+  let _beatTimer    = null;
+  let _beatRunning  = false;
+  let _beatNextTime = 0;
+  let _beatCurStep  = 0;
+  const STEPS         = 16;
+  const SCHEDULE_AHEAD = 0.1;   // saat lookahead
+  const TICK_MS        = 25;    // interval poll scheduler
+
+  function _stepDur() { return 60 / beatBpm / 4; }  // durasi 16th note
+
+  function _scheduleTick() {
+    if (!_beatRunning) return;
+    const ac = isRunning() ? getAudioCtx() : null;
+    if (!ac) return;
+    while (_beatNextTime < ac.currentTime + SCHEDULE_AHEAD) {
+      const ss = get(sensorSamples);
+      for (let i = 0; i < 4; i++) {
+        if (!beatActive[i]) continue;
+        const sid = ss[i];
+        if (!sid) continue;
+        const pat = BEAT_PATTERNS[sid] ?? [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+        if (pat[_beatCurStep]) {
+          SAMPLE_FNS[sid]?.(_beatNextTime, 0.8);
+        }
+      }
+      beatStep = _beatCurStep;
+      _beatCurStep = (_beatCurStep + 1) % STEPS;
+      _beatNextTime += _stepDur();
+    }
+  }
+
+  function _startBeatClock() {
+    if (_beatRunning) return;
+    _beatRunning  = true;
+    _beatCurStep  = 0;
+    const ac = isRunning() ? getAudioCtx() : null;
+    _beatNextTime = ac ? ac.currentTime + 0.05 : 0;
+    _beatTimer = setInterval(_scheduleTick, TICK_MS);
+  }
+
+  function _stopBeatClock() {
+    _beatRunning = false;
+    clearInterval(_beatTimer);
+    _beatTimer = null;
+    beatStep = 0;
+  }
+
+  function stopAllBeats() {
+    beatActive = [false, false, false, false];
+    _stopBeatClock();
+  }
+
+  // ── Hit → toggle beat per sensor ──────────────────────────────
   hitEvent.subscribe(async e => {
     if (e.idx < 0 || !e.ts) return;
 
-    // Sensor kosong → abaikan sepenuhnya (tiada bunyi, tiada counter)
+    // Sensor kosong → abaikan sepenuhnya
     const sampleId = get(sensorSamples)[e.idx];
     if (!sampleId) return;
 
-    // Counter & BPM
+    // Counter & BPM detect
     hits[e.idx]++;
     hits = [...hits];
     hitTimes[e.idx].push(e.ts);
@@ -54,11 +135,22 @@
       bpm = [...bpm];
     }
 
-    // Play sample
     if (!audioEnabled) return;
     try {
       await ensureRunning();
-      SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, e.velocity / 100);
+      // Toggle beat untuk sensor ini
+      const wasActive = beatActive[e.idx];
+      beatActive[e.idx] = !wasActive;
+      beatActive = [...beatActive];
+
+      if (!wasActive) {
+        // Mula → mainkan satu ketukan terus + mulakan loop
+        SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, 0.8);
+        if (!_beatRunning) _startBeatClock();
+      } else {
+        // Berhenti → matikan loop sensor ini; hentikan clock kalau semua off
+        if (!beatActive.some(Boolean)) _stopBeatClock();
+      }
     } catch {}
   });
 
@@ -169,28 +261,48 @@
     </div>
   {/if}
 
-  <!-- SENSOR SELECTOR — 4 butang pilih sensor + sample -->
-  <section class="grid grid-cols-4 gap-2">
-    {#each $sensors as s, i}
-      {@const sample = getSample($sensorSamples[i])}
-      <button
-        class="rounded-xl border-2 p-3 text-left transition-all duration-200 flex flex-col gap-1"
-        style="border-color:{sample.id ? CLR[i] : '#1e293b'};
-               background:{sample.id ? CLR[i]+'11' : '#0f172a'}"
-        on:click={() => { selectedSensor.set(i); openPicker(); }}
-      >
-        <div class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
-          {i === 0 ? '🥁' : i === 1 ? '🎹' : i === 2 ? '🪘' : '🎵'} {NAMES[i]}
-        </div>
-        {#if sample.id}
-          <div class="text-xs font-medium truncate" style="color:{sample.color}">{sample.icon} {sample.label}</div>
-          <div class="text-xs mt-0.5" style="color:{CLR[i]}88">● aktif</div>
-        {:else}
-          <div class="text-xs text-slate-600">— kosong —</div>
-          <div class="text-xs text-slate-700 mt-0.5">klik untuk assign</div>
-        {/if}
-      </button>
-    {/each}
+  <!-- SENSOR SELECTOR — 4 butang pilih sensor + sample + beat indicator -->
+  <section class="card p-3 flex flex-col gap-2">
+    <!-- BPM + Stop All -->
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-slate-500 shrink-0">BPM</span>
+      <input type="range" min="60" max="200" step="1" bind:value={beatBpm}
+        class="flex-1 accent-cyan-500 h-1" />
+      <span class="text-xs font-mono font-bold text-cyan-400 w-8 text-right">{beatBpm}</span>
+      {#if beatActive.some(Boolean)}
+        <button
+          class="text-xs px-3 py-1 rounded-lg bg-red-950 text-red-400 border border-red-900 hover:bg-red-900 transition-colors shrink-0"
+          on:click={stopAllBeats}>■ Stop</button>
+      {/if}
+    </div>
+    <!-- 4 sensor butang -->
+    <div class="grid grid-cols-4 gap-2">
+      {#each $sensors as s, i}
+        {@const sample = getSample($sensorSamples[i])}
+        {@const looping = beatActive[i]}
+        <button
+          class="rounded-xl border-2 p-3 text-left transition-all duration-200 flex flex-col gap-1"
+          style="border-color:{looping ? CLR[i] : sample.id ? CLR[i]+'66' : '#1e293b'};
+                 background:{looping ? CLR[i]+'22' : sample.id ? CLR[i]+'0a' : '#0f172a'}"
+          on:click={() => { selectedSensor.set(i); openPicker(); }}
+        >
+          <div class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
+            {i === 0 ? '🥁' : i === 1 ? '🎹' : i === 2 ? '🪘' : '🎵'} {NAMES[i]}
+          </div>
+          {#if sample.id}
+            <div class="text-xs font-medium truncate" style="color:{sample.color}">{sample.icon} {sample.label}</div>
+            {#if looping}
+              <div class="text-xs font-bold mt-0.5 animate-pulse" style="color:{CLR[i]}">▶ loop</div>
+            {:else}
+              <div class="text-xs mt-0.5 text-slate-600">kena sensor → loop</div>
+            {/if}
+          {:else}
+            <div class="text-xs text-slate-600">— kosong —</div>
+            <div class="text-xs text-slate-700 mt-0.5">klik assign</div>
+          {/if}
+        </button>
+      {/each}
+    </div>
   </section>
 
   <!-- DRUM PADS -->
