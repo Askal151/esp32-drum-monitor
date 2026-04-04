@@ -169,25 +169,47 @@
     </div>
   {/if}
 
+  <!-- SENSOR SELECTOR — 4 butang pilih sensor + sample -->
+  <section class="grid grid-cols-4 gap-2">
+    {#each $sensors as s, i}
+      {@const sample = getSample($sensorSamples[i])}
+      <button
+        class="rounded-xl border-2 p-3 text-left transition-all duration-200 flex flex-col gap-1"
+        style="border-color:{sample.id ? CLR[i] : '#1e293b'};
+               background:{sample.id ? CLR[i]+'11' : '#0f172a'}"
+        on:click={() => { selectedSensor.set(i); openPicker(); }}
+      >
+        <div class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
+          {i === 0 ? '🥁' : i === 1 ? '🎹' : i === 2 ? '🪘' : '🎵'} {NAMES[i]}
+        </div>
+        {#if sample.id}
+          <div class="text-xs font-medium truncate" style="color:{sample.color}">{sample.icon} {sample.label}</div>
+          <div class="text-xs mt-0.5" style="color:{CLR[i]}88">● aktif</div>
+        {:else}
+          <div class="text-xs text-slate-600">— kosong —</div>
+          <div class="text-xs text-slate-700 mt-0.5">klik untuk assign</div>
+        {/if}
+      </button>
+    {/each}
+  </section>
+
   <!-- DRUM PADS -->
   <section class="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
     {#each $sensors as s, i}
       {@const sample = getSample($sensorSamples[i])}
       <div
         class="card p-4 transition-all duration-200"
-        class:ring-1={$selectedSensor === i}
-        style={$selectedSensor === i ? `--tw-ring-color:${CLR[i]}` : ''}
+        class:ring-1={!!sample.id && s.led > 0}
+        style={sample.id && s.led > 0 ? `--tw-ring-color:${CLR[i]}` : ''}
       >
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
             {i === 0 ? '🥁' : i === 1 ? '🎹' : i === 2 ? '🪘' : '🎵'} {NAMES[i]}
           </span>
-          <!-- Badge sample yang tersimpan -->
           <button
             class="flex items-center gap-1 text-xs px-2 py-0.5 rounded border transition-colors"
             style="border-color:{sample.id ? sample.color+'44' : '#33415544'}; color:{sample.id ? sample.color : '#64748b'}; background:{sample.id ? sample.color+'11' : 'transparent'}"
-            on:click={() => { selectedSensor.set(i); openPicker(); tab = 'assign'; }}
-            title="Klik untuk assign sample ke sensor ini"
+            on:click={() => { selectedSensor.set(i); openPicker(); }}
           >
             <span>{sample.icon}</span>
             <span>{sample.label}</span>
