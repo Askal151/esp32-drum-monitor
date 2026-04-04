@@ -43,11 +43,8 @@
   // Klik sensor terus dari panel sensor
   function clickSensor(i) {
     selectedSensor.set(i);
-    // Terus ke action state
-    import('./sampleStore.js').then(m => {
-      m.actionCursor.set(0);
-      m.pickerState.set('action');
-    });
+    actionCursor.set(0);
+    pickerState.set('action');
   }
 
   // Klik sample terus dari panel sample
@@ -59,15 +56,13 @@
 
   // Klik tindakan terus
   function clickAction(actionIdx) {
-    import('./sampleStore.js').then(m => {
-      const action = ACTIONS[actionIdx];
-      if (action.id === 'assign') {
-        m.pickerState.set('sample');
-      } else {
-        deleteSample($selectedSensor);
-        closePicker();
-      }
-    });
+    const action = ACTIONS[actionIdx];
+    if (action.id === 'assign') {
+      pickerState.set('sample');
+    } else {
+      deleteSample($selectedSensor);
+      closePicker();
+    }
   }
 </script>
 

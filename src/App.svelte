@@ -64,7 +64,8 @@
   btnEvent.subscribe(e => {
     if (!e.ts) return;
     if (e.btn === 'NAV') {
-      btnNav(audioReady ? getAudioCtx() : null);
+      // Baca isRunning() secara langsung untuk elak stale closure
+      btnNav(isRunning() ? getAudioCtx() : null);
       tab = 'assign';
     }
     if (e.btn === 'SEL') {

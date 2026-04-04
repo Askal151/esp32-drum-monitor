@@ -55,7 +55,9 @@ const RX_BTN  = /\[BTN\](NAV|SEL)/;
 // ── State ───────────────────────────────────────────────────────
 let _port = null, _reader = null, _running = false, _lineBuf = '';
 let _wantMonitor = false, _reconnecting = false;
-let _prevLed = [0, 0, 0, 0];   // untuk detect hit event
+let _prevLed  = [0, 0, 0, 0];   // untuk detect hit event
+const HIT_COOLDOWN_MS = 150;
+let _lastHitTs = [0, 0, 0, 0];  // debounce hit per sensor
 
 function parseLine(raw) {
   const line = raw.trim();
@@ -72,9 +74,11 @@ function parseLine(raw) {
         plotBuf[i].adc.push(adc); plotBuf[i].adc.shift();
         plotBuf[i].dev.push(dev); plotBuf[i].dev.shift();
 
-        // Detect hit: LED naik dari 0
-        if (led > 0 && _prevLed[i] === 0) {
-          hitEvent.set({ idx: i, velocity: Math.min(100, Math.round(dev / 12)), ts: Date.now() });
+        // Detect hit: LED naik dari 0, dengan cooldown 150ms
+        const now = Date.now();
+        if (led > 0 && _prevLed[i] === 0 && now - _lastHitTs[i] > HIT_COOLDOWN_MS) {
+          _lastHitTs[i] = now;
+          hitEvent.set({ idx: i, velocity: Math.min(100, Math.round(dev / 12)), ts: now });
         }
         _prevLed[i] = led;
       }
