@@ -19,7 +19,7 @@
     SAMPLE_FNS, getSample,
     sensorSamples, selectedSensor,
     saveSample, deleteSample,
-    btnNav, btnSel, showPicker,
+    btnNav, btnSel, openPicker,
   } from './lib/sampleStore.js';
 
   const CLR   = ['#22d3ee', '#4ade80', '#f59e0b', '#f472b6'];
@@ -63,8 +63,13 @@
   // ── Button fizikal NAV / SEL ───────────────────────────────────
   btnEvent.subscribe(e => {
     if (!e.ts) return;
-    if (e.btn === 'NAV') { btnNav(audioReady ? getAudioCtx() : null); tab = 'assign'; }
-    if (e.btn === 'SEL') { btnSel(); }
+    if (e.btn === 'NAV') {
+      btnNav(audioReady ? getAudioCtx() : null);
+      tab = 'assign';
+    }
+    if (e.btn === 'SEL') {
+      btnSel();
+    }
   });
 
   async function toggleConn() {
@@ -125,8 +130,8 @@
 
       <button
         class="text-xs px-3 py-1.5 rounded-md font-bold ring-1 transition-all bg-amber-950 text-amber-400 ring-amber-900 hover:bg-amber-900"
-        on:click={showPicker}
-        title="Pilih sample untuk sensor aktif (shortcut button NAV/SEL)"
+        on:click={openPicker}
+        title="Buka picker (sama dengan tekan NAV button)"
       >🎵 Pilih Sample</button>
       {#if $connected}
         <button class="btn-gray" on:click={() => sendCmd('s')}>📋 Status</button>
@@ -172,7 +177,7 @@
           <button
             class="flex items-center gap-1 text-xs px-2 py-0.5 rounded border transition-colors"
             style="border-color:{sample.id ? sample.color+'44' : '#33415544'}; color:{sample.id ? sample.color : '#64748b'}; background:{sample.id ? sample.color+'11' : 'transparent'}"
-            on:click={() => { selectedSensor.set(i); showPicker(); tab = 'assign'; }}
+            on:click={() => { selectedSensor.set(i); openPicker(); tab = 'assign'; }}
             title="Klik untuk assign sample ke sensor ini"
           >
             <span>{sample.icon}</span>

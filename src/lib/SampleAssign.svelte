@@ -8,7 +8,7 @@
   import {
     SAMPLES, SAMPLE_FNS, getSample,
     sensorSamples, selectedSensor, cursorIdx,
-    saveSample, deleteSample, showPicker,
+    saveSample, deleteSample, openPicker,
   } from './sampleStore.js';
   import { getAudioCtx, ensureRunning } from './audio.js';
 
@@ -55,7 +55,7 @@
     <span class="text-xs font-bold tracking-widest text-slate-600">SAMPLE ASSIGN</span>
     <button
       class="text-xs px-2.5 py-1 rounded border border-amber-900 text-amber-400 bg-amber-950 hover:bg-amber-900 transition-colors"
-      on:click={showPicker}
+      on:click={openPicker}
       title="Buka picker (atau tekan NAV button di ESP32)"
     >🎵 Pilih Sample</button>
   </div>
