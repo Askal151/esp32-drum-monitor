@@ -170,7 +170,9 @@ export async function connect() {
   if (!navigator.serial) { alert('Web Serial API tidak disokong. Sila guna Chrome / Edge.'); return false; }
   try {
     _port = await navigator.serial.requestPort();
-    if (_port.readable) { try { await _port.close(); } catch {}; await delay(300); }
+    // Selalu close dulu — Chrome mungkin masih pegang port dari sesi sebelumnya
+    try { await _port.close(); } catch {}
+    await delay(400);
     await _port.open({ baudRate: 115200, bufferSize: 16384 });
     _reader = _port.readable.getReader();
     _running = true; _wantMonitor = true;
