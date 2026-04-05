@@ -138,19 +138,9 @@
     if (!audioEnabled) return;
     try {
       await ensureRunning();
-      // Toggle beat untuk sensor ini
-      const wasActive = beatActive[e.idx];
-      beatActive[e.idx] = !wasActive;
-      beatActive = [...beatActive];
-
-      if (!wasActive) {
-        // Mula → mainkan satu ketukan terus + mulakan loop
-        SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, 0.8);
-        if (!_beatRunning) _startBeatClock();
-      } else {
-        // Berhenti → matikan loop sensor ini; hentikan clock kalau semua off
-        if (!beatActive.some(Boolean)) _stopBeatClock();
-      }
+      // One-shot: mainkan sample sekali per hit
+      const vel = Math.max(0.1, Math.min(1.0, (e.velocity ?? 64) / 127));
+      SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, vel);
     } catch {}
   });
 

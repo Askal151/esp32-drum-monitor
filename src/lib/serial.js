@@ -78,7 +78,11 @@ function parseLine(raw) {
         const now = Date.now();
         if (led > 0 && _prevLed[i] === 0 && now - _lastHitTs[i] > HIT_COOLDOWN_MS) {
           _lastHitTs[i] = now;
-          hitEvent.set({ idx: i, velocity: Math.min(100, Math.round(dev / 12)), ts: now });
+          // Velocity: thresh[0]=40 → min, thresh[3]=900 → max (map ke 1–127 MIDI-style)
+          const tMin = arr[i].thresh[0] ?? 40;
+          const tMax = arr[i].thresh[3] ?? 900;
+          const velocity = Math.max(1, Math.min(127, Math.round((Math.abs(dev) - tMin) / (tMax - tMin) * 126) + 1));
+          hitEvent.set({ idx: i, velocity, ts: now });
         }
         _prevLed[i] = led;
       }

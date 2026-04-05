@@ -25,28 +25,41 @@ Adafruit_ADS1015 ads;
 #define BTN_SEL 25   // Confirm/simpan sample
 
 // ── Sensor config ──────────────────────────────────────────────
-#define NUM_SENSORS      4
-#define SAMPLES_BASELINE 50
-#define DEBOUNCE_MS      80
+#define NUM_SENSORS          4
+#define SAMPLES_BASELINE     50
+#define DEBOUNCE_MS          80
 #define BASELINE_INTERVAL_MS 300000UL   // 5 minit
 
+// Output ke serial tiap 20ms (50Hz), tapi baca sensor tiap 2ms (500Hz)
+#define SERIAL_INTERVAL_MS   20
+#define SAMPLE_INTERVAL_MS   2
+
+// Threshold diturunkan: level 1 = 40 counts (~80mV) supaya magnet lemah tetap terdeteksi
 int thresh[NUM_SENSORS][4] = {
-  {82, 329, 720, 1049},
-  {82, 329, 720, 1049},
-  {82, 329, 720, 1049},
-  {82, 329, 720, 1049}
+  {40, 200, 500, 900},
+  {40, 200, 500, 900},
+  {40, 200, 500, 900},
+  {40, 200, 500, 900}
 };
 
 int16_t baseline[NUM_SENSORS] = {0};
-int     led[NUM_SENSORS]      = {0};
 bool    baselineDone           = false;
 unsigned long lastBaselineTime = 0;
+
+// ── Peak detection state ───────────────────────────────────────
+// Simpan nilai peak dalam window 20ms supaya hit pantas tidak terlepas
+int16_t peakAdc[NUM_SENSORS] = {0};
+int16_t peakDev[NUM_SENSORS] = {0};
 
 // ── Debounce state ─────────────────────────────────────────────
 bool          prevBtnNav  = HIGH;
 bool          prevBtnSel  = HIGH;
 unsigned long lastNavTime = 0;
 unsigned long lastSelTime = 0;
+
+// ── Timing ────────────────────────────────────────────────────
+unsigned long lastSampleTime = 0;
+unsigned long lastSerialTime = 0;
 
 // ── Setup ──────────────────────────────────────────────────────
 void setup() {
@@ -87,6 +100,8 @@ void calibrateBaseline() {
   }
   for (int s = 0; s < NUM_SENSORS; s++) {
     baseline[s] = sum[s] / SAMPLES_BASELINE;
+    peakAdc[s]  = baseline[s];
+    peakDev[s]  = 0;
     Serial.printf("[INIT S%d] baseline=%d\n", s+1, baseline[s]);
   }
   baselineDone = true;
@@ -152,41 +167,59 @@ void handleCommand() {
 void loop() {
   unsigned long now = millis();
 
-  // 1. Poll button dulu (sebelum I2C yang lambat)
+  // 1. Poll button dulu (sebelum I2C)
   pollButtons();
 
-  // 2. Baca 4 sensor
-  int16_t adc[NUM_SENSORS], dev[NUM_SENSORS];
-  for (int s = 0; s < NUM_SENSORS; s++) {
-    adc[s] = ads.readADC_SingleEnded(s);
-    dev[s] = adc[s] - baseline[s];
-    led[s] = computeLed(s, dev[s]);
-  }
-
-  // 3. Hantar data sensor ke serial
-  Serial.printf("HALL4|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d\n",
-    adc[0], dev[0], led[0],
-    adc[1], dev[1], led[1],
-    adc[2], dev[2], led[2],
-    adc[3], dev[3], led[3]);
-
-  // 4. Auto re-calibrate baseline bila semua sensor idle (setiap 5 minit)
-  if (baselineDone && now - lastBaselineTime > BASELINE_INTERVAL_MS) {
-    bool allIdle = true;
-    for (int s = 0; s < NUM_SENSORS; s++)
-      if (led[s] > 0) { allIdle = false; break; }
-    if (allIdle) {
-      for (int s = 0; s < NUM_SENSORS; s++) {
-        int16_t nb = ads.readADC_SingleEnded(s);
-        baseline[s] = (int16_t)(baseline[s] * 0.9f + nb * 0.1f);
-        Serial.printf("[AUTO S%d] baseline=%d\n", s+1, baseline[s]);
+  // 2. Baca sensor tiap 2ms (500Hz) — peak detection
+  if (now - lastSampleTime >= SAMPLE_INTERVAL_MS) {
+    lastSampleTime = now;
+    for (int s = 0; s < NUM_SENSORS; s++) {
+      int16_t adc = ads.readADC_SingleEnded(s);
+      int16_t dev = adc - baseline[s];
+      // Simpan peak terbesar (absolute) dalam window semasa
+      if (abs(dev) > abs(peakDev[s])) {
+        peakAdc[s] = adc;
+        peakDev[s] = dev;
       }
-      lastBaselineTime = now;
     }
   }
 
-  // 5. Cek command dari Serial
-  handleCommand();
+  // 3. Hantar data ke serial tiap 20ms (50Hz) dengan nilai peak
+  if (now - lastSerialTime >= SERIAL_INTERVAL_MS) {
+    lastSerialTime = now;
 
-  delay(20);  // 50Hz — cukup untuk drum, elak overflow Web Serial
+    int led[NUM_SENSORS];
+    for (int s = 0; s < NUM_SENSORS; s++)
+      led[s] = computeLed(s, peakDev[s]);
+
+    Serial.printf("HALL4|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d\n",
+      peakAdc[0], peakDev[0], led[0],
+      peakAdc[1], peakDev[1], led[1],
+      peakAdc[2], peakDev[2], led[2],
+      peakAdc[3], peakDev[3], led[3]);
+
+    // Reset peak selepas dihantar
+    for (int s = 0; s < NUM_SENSORS; s++) {
+      peakAdc[s] = baseline[s];
+      peakDev[s] = 0;
+    }
+
+    // Auto re-calibrate baseline bila semua sensor idle (setiap 5 minit)
+    if (baselineDone && now - lastBaselineTime > BASELINE_INTERVAL_MS) {
+      bool allIdle = true;
+      for (int s = 0; s < NUM_SENSORS; s++)
+        if (led[s] > 0) { allIdle = false; break; }
+      if (allIdle) {
+        for (int s = 0; s < NUM_SENSORS; s++) {
+          int16_t nb = ads.readADC_SingleEnded(s);
+          baseline[s] = (int16_t)(baseline[s] * 0.9f + nb * 0.1f);
+          Serial.printf("[AUTO S%d] baseline=%d\n", s+1, baseline[s]);
+        }
+        lastBaselineTime = now;
+      }
+    }
+  }
+
+  // 4. Cek command dari Serial
+  handleCommand();
 }
