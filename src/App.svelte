@@ -114,15 +114,12 @@
     _stopBeatClock();
   }
 
-  // ── Hit → toggle beat per sensor ──────────────────────────────
-  hitEvent.subscribe(async e => {
+  // ── Hit → kira hit & BPM sahaja (audio ditangani oleh loop bawah) ──
+  hitEvent.subscribe(e => {
     if (e.idx < 0 || !e.ts) return;
-
-    // Sensor kosong → abaikan sepenuhnya
     const sampleId = get(sensorSamples)[e.idx];
     if (!sampleId) return;
 
-    // Counter & BPM detect
     hits[e.idx]++;
     hits = [...hits];
     hitTimes[e.idx].push(e.ts);
@@ -134,14 +131,36 @@
       bpm[e.idx] = Math.round(60000 / (intervals.reduce((a,b)=>a+b,0)/intervals.length));
       bpm = [...bpm];
     }
+  });
 
-    if (!audioEnabled) return;
-    try {
-      await ensureRunning();
-      // One-shot: mainkan sample sekali per hit
-      const vel = Math.max(0.1, Math.min(1.0, (e.velocity ?? 64) / 127));
-      SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, vel);
-    } catch {}
+  // ── Sustained loop: mainkan sample terus-menerus selagi LED > 0 ──
+  // Retrigger setiap LOOP_MS supaya bunyi tidak putus
+  const LOOP_MS = 150;
+  const _loopTimers = new Array(8).fill(null);
+
+  sensors.subscribe(arr => {
+    if (!audioEnabled || !isRunning()) return;
+    for (let i = 0; i < 8; i++) {
+      const led = arr[i].led;
+      if (led > 0 && !_loopTimers[i]) {
+        // Mula loop untuk sensor ini
+        const playOnce = () => {
+          const sampleId = get(sensorSamples)[i];
+          if (!sampleId || !isRunning()) return;
+          const s   = get(sensors)[i];
+          const vel = Math.max(0.15, Math.min(1.0,
+            (Math.abs(s.dev) - s.thresh[0]) / (s.thresh[3] - s.thresh[0])
+          ));
+          SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, vel);
+        };
+        playOnce();
+        _loopTimers[i] = setInterval(playOnce, LOOP_MS);
+      } else if (led === 0 && _loopTimers[i]) {
+        // Hentikan loop apabila sensor kembali idle
+        clearInterval(_loopTimers[i]);
+        _loopTimers[i] = null;
+      }
+    }
   });
 
   // ── Button fizikal NAV / SEL ───────────────────────────────────
