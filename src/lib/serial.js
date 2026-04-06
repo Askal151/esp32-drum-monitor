@@ -14,14 +14,14 @@ export const connected   = writable(false);
 export const packetCount = writable(0);
 
 export const sensors = writable([
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [30,  150,  400,  700],   name: 'S1' },
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [30,  150,  400,  700],   name: 'S2' },
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [30,  150,  400,  700],   name: 'S3' },
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [30,  150,  400,  700],   name: 'S4' },
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [500, 2500, 6000, 11000], name: 'S5' },
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [500, 2500, 6000, 11000], name: 'S6' },
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [500, 2500, 6000, 11000], name: 'S7' },
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [500, 2500, 6000, 11000], name: 'S8' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [10,  25,  60,  120],  name: 'S1' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [10,  25,  60,  120],  name: 'S2' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [10,  25,  60,  120],  name: 'S3' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [10,  25,  60,  120],  name: 'S4' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [80,  200, 600, 1200], name: 'S5' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [80,  200, 600, 1200], name: 'S6' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [80,  200, 600, 1200], name: 'S7' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [80,  200, 600, 1200], name: 'S8' },
 ]);
 
 export const chartTick  = writable(0);
