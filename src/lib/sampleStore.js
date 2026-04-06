@@ -67,8 +67,8 @@ export const SAMPLE_FNS = {
 };
 
 // ── Persistence ─────────────────────────────────────────────────
-const DEFAULTS     = [null, null, null, null];
-const STORAGE_KEY  = 'drum_sensor_samples_v2';
+const DEFAULTS     = [null, null, null, null, null, null, null, null];
+const STORAGE_KEY  = 'drum_sensor_samples_v3';
 function _load()         { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch { return null; } }
 function _persist(arr)   { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(arr)); } catch {} }
 
@@ -77,7 +77,7 @@ export const sensorSamples  = writable(_load() ?? [...DEFAULTS]);
 export const selectedSensor = writable(0);
 
 // Kursor sample per sensor (mulai index 0)
-export const cursorIdx = writable([0, 0, 0, 0]);
+export const cursorIdx = writable([0, 0, 0, 0, 0, 0, 0, 0]);
 
 // ── State machine ────────────────────────────────────────────────
 // States: 'idle' | 'sensor' | 'sample'
@@ -101,8 +101,8 @@ export function btnNav(audioCtx = null) {
     pickerState.set('sensor');
 
   } else if (state === 'sensor') {
-    // Cycle sensor: 0 → 1 → 2 → 3 → 0
-    selectedSensor.update(i => (i + 1) % 4);
+    // Cycle sensor: 0 → 1 → … → 7 → 0
+    selectedSensor.update(i => (i + 1) % 8);
 
   } else if (state === 'sample') {
     // Next sample + preview bunyi

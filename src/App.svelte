@@ -22,21 +22,21 @@
     btnNav, btnSel, openPicker,
   } from './lib/sampleStore.js';
 
-  const CLR   = ['#22d3ee', '#4ade80', '#f59e0b', '#f472b6'];
-  const NAMES = ['SNARE', 'KICK', 'TOM', 'HI-HAT'];
+  const CLR   = ['#22d3ee', '#4ade80', '#f59e0b', '#f472b6', '#a78bfa', '#fb923c', '#34d399', '#f87171'];
+  const NAMES = ['SNARE', 'KICK', 'TOM', 'HI-HAT', 'CRASH', 'RIDE', 'PERC1', 'PERC2'];
 
   let tab = 'drum';
   let lastError   = '';
   let audioReady  = false;
   let audioEnabled = true;
-  let hits = [0, 0, 0, 0];
-  let bpm  = [0, 0, 0, 0];
-  const hitTimes = [[], [], [], []];
+  let hits = [0, 0, 0, 0, 0, 0, 0, 0];
+  let bpm  = [0, 0, 0, 0, 0, 0, 0, 0];
+  const hitTimes = [[], [], [], [], [], [], [], []];
 
   // ── Beat engine ────────────────────────────────────────────────
   // Setiap sensor boleh loop sample-nya sebagai beat secara bebas
   let beatBpm    = 120;
-  let beatActive = [false, false, false, false];
+  let beatActive = [false, false, false, false, false, false, false, false];
   let beatStep   = 0;   // step semasa (0–15), untuk paparan
 
   // Pola beat default mengikut jenis sample (16 langkah, 16th notes)
@@ -78,7 +78,7 @@
     if (!ac) return;
     while (_beatNextTime < ac.currentTime + SCHEDULE_AHEAD) {
       const ss = get(sensorSamples);
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 8; i++) {
         if (!beatActive[i]) continue;
         const sid = ss[i];
         if (!sid) continue;
@@ -110,7 +110,7 @@
   }
 
   function stopAllBeats() {
-    beatActive = [false, false, false, false];
+    beatActive = [false, false, false, false, false, false, false, false];
     _stopBeatClock();
   }
 
@@ -199,7 +199,7 @@
   <header class="card px-4 py-2.5 flex items-center justify-between flex-wrap gap-2">
     <div class="flex items-baseline gap-3">
       <span class="text-base font-bold text-cyan-400 tracking-tight">🥁 ESP32 Drum Monitor</span>
-      <span class="text-xs text-slate-700">ADS1015 · Hall Sensor · Web Serial</span>
+      <span class="text-xs text-slate-700">ADS1015+ADS1115 · 8 Sensor · Web Serial</span>
     </div>
     <div class="flex items-center gap-3">
       {#if $portState === 'monitor'}
@@ -265,26 +265,30 @@
           on:click={stopAllBeats}>■ Stop</button>
       {/if}
     </div>
-    <!-- 4 sensor butang -->
+    <!-- 8 sensor butang — 2 baris, 4 per baris -->
     <div class="grid grid-cols-4 gap-2">
       {#each $sensors as s, i}
         {@const sample = getSample($sensorSamples[i])}
         {@const looping = beatActive[i]}
+        {@const chip = i < 4 ? 'ADS1015' : 'ADS1115'}
         <button
-          class="rounded-xl border-2 p-3 text-left transition-all duration-200 flex flex-col gap-1"
+          class="rounded-xl border-2 p-2 text-left transition-all duration-200 flex flex-col gap-1"
           style="border-color:{looping ? CLR[i] : sample.id ? CLR[i]+'66' : '#1e293b'};
                  background:{looping ? CLR[i]+'22' : sample.id ? CLR[i]+'0a' : '#0f172a'}"
           on:click={() => { selectedSensor.set(i); openPicker(); }}
         >
-          <div class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
-            {i === 0 ? '🥁' : i === 1 ? '🎹' : i === 2 ? '🪘' : '🎵'} {NAMES[i]}
+          <div class="flex items-center justify-between">
+            <div class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
+              {NAMES[i]}
+            </div>
+            <div class="text-[9px] text-slate-700">{chip}</div>
           </div>
           {#if sample.id}
             <div class="text-xs font-medium truncate" style="color:{sample.color}">{sample.icon} {sample.label}</div>
             {#if looping}
               <div class="text-xs font-bold mt-0.5 animate-pulse" style="color:{CLR[i]}">▶ loop</div>
             {:else}
-              <div class="text-xs mt-0.5 text-slate-600">kena sensor → loop</div>
+              <div class="text-xs mt-0.5 text-slate-600">sensor → bunyi</div>
             {/if}
           {:else}
             <div class="text-xs text-slate-600">— kosong —</div>
@@ -295,18 +299,18 @@
     </div>
   </section>
 
-  <!-- DRUM PADS -->
-  <section class="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+  <!-- DRUM PADS — 4 kolum, 2 baris -->
+  <section class="grid grid-cols-4 gap-3 max-sm:grid-cols-2">
     {#each $sensors as s, i}
       {@const sample = getSample($sensorSamples[i])}
       <div
-        class="card p-4 transition-all duration-200"
+        class="card p-3 transition-all duration-200"
         class:ring-1={!!sample.id && s.led > 0}
         style={sample.id && s.led > 0 ? `--tw-ring-color:${CLR[i]}` : ''}
       >
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
-            {i === 0 ? '🥁' : i === 1 ? '🎹' : i === 2 ? '🪘' : '🎵'} {NAMES[i]}
+            {NAMES[i]}
           </span>
           <button
             class="flex items-center gap-1 text-xs px-2 py-0.5 rounded border transition-colors"
@@ -382,7 +386,7 @@
         ● Menerima data sensor drum
       {/if}
     </span>
-    <span class="text-slate-900">ESP32 · ADS1015 · Hall Sensor · HW-040</span>
+    <span class="text-slate-900">ESP32 · ADS1015+ADS1115 · 8× Hall Sensor · HW-040</span>
   </footer>
 
 </div>

@@ -1,7 +1,8 @@
 /**
- * serial.js — Web Serial manager ESP32 + ADS1015
- * Format: HALL4|adc1|dev1|led1|adc2|dev2|led2|adc3|dev3|led3|adc4|dev4|led4  @115200
- * Sensor 1 = Snare (A0), Sensor 2 = Kick (A1), Sensor 3 = Tom (A2), Sensor 4 = HiHat (A3)
+ * serial.js — Web Serial manager ESP32 + ADS1015/ADS1115
+ * Format: HALL8|adc1|dev1|led1|...|adc8|dev8|led8  @115200  (24 nilai)
+ * S1–S4 = ADS1015 @ 0x48 (A0–A3)
+ * S5–S8 = ADS1115 @ 0x49 (A0–A3)
  */
 import { writable } from 'svelte/store';
 
@@ -13,10 +14,14 @@ export const connected   = writable(false);
 export const packetCount = writable(0);
 
 export const sensors = writable([
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [82, 329, 720, 1049], name: 'SNARE'  },
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [82, 329, 720, 1049], name: 'KICK'   },
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [82, 329, 720, 1049], name: 'TOM'    },
-  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [82, 329, 720, 1049], name: 'HI-HAT' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [40,  200,  500,  900],  name: 'S1' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [40,  200,  500,  900],  name: 'S2' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [40,  200,  500,  900],  name: 'S3' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [40,  200,  500,  900],  name: 'S4' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [640, 3200, 8000, 14400], name: 'S5' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [640, 3200, 8000, 14400], name: 'S6' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [640, 3200, 8000, 14400], name: 'S7' },
+  { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [640, 3200, 8000, 14400], name: 'S8' },
 ]);
 
 export const chartTick  = writable(0);
@@ -25,12 +30,10 @@ export const hitEvent   = writable({ idx: -1, velocity: 0, ts: 0 });  // trigger
 // ── Button events ──────────────────────────────────────────────
 export const btnEvent = writable({ btn: '', ts: 0 });   // btn: 'NAV' atau 'SEL'
 
-export const plotBuf = [
-  { adc: new Array(MAX_POINTS).fill(0), dev: new Array(MAX_POINTS).fill(0) },
-  { adc: new Array(MAX_POINTS).fill(0), dev: new Array(MAX_POINTS).fill(0) },
-  { adc: new Array(MAX_POINTS).fill(0), dev: new Array(MAX_POINTS).fill(0) },
-  { adc: new Array(MAX_POINTS).fill(0), dev: new Array(MAX_POINTS).fill(0) },
-];
+export const plotBuf = Array.from({ length: 8 }, () => ({
+  adc: new Array(MAX_POINTS).fill(0),
+  dev: new Array(MAX_POINTS).fill(0),
+}));
 
 // ── Raw serial history ──────────────────────────────────────────
 export const rawHistory = [];
@@ -44,20 +47,18 @@ function emitRaw(text, dir = 'rx') {
 }
 
 // ── Regex ───────────────────────────────────────────────────────
-const RX_DATA = /HALL4\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)/;
-const RX_THR1 = /\[THRESH1\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
-const RX_THR2 = /\[THRESH2\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
-const RX_THR3 = /\[THRESH3\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
-const RX_THR4 = /\[THRESH4\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
-const RX_BASE = /\[(?:AUTO|CAL|INIT)\s*S(\d)\].*?(\d+)\s*$/;
+const D = '\\|(-?\\d+)';
+const RX_DATA = new RegExp('HALL8' + D.repeat(24));
+const RX_THR  = /\[THRESH(\d+)\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
+const RX_BASE = /\[(?:AUTO|CAL|INIT)\s*S(\d+)\].*?(\d+)\s*$/;
 const RX_BTN  = /\[BTN\](NAV|SEL)/;
 
 // ── State ───────────────────────────────────────────────────────
 let _port = null, _reader = null, _running = false, _lineBuf = '';
 let _wantMonitor = false, _reconnecting = false;
-let _prevLed  = [0, 0, 0, 0];   // untuk detect hit event
+let _prevLed  = new Array(8).fill(0);   // untuk detect hit event
 const HIT_COOLDOWN_MS = 150;
-let _lastHitTs = [0, 0, 0, 0];  // debounce hit per sensor
+let _lastHitTs = new Array(8).fill(0);  // debounce hit per sensor
 
 function parseLine(raw) {
   const line = raw.trim();
@@ -66,11 +67,13 @@ function parseLine(raw) {
 
   let m = RX_DATA.exec(line);
   if (m) {
-    const v = [1,2,3,4,5,6,7,8,9,10,11,12].map(i => +m[i]);
+    const v = Array.from({ length: 24 }, (_, i) => +m[i + 1]);
     sensors.update(arr => {
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 8; i++) {
         const adc = v[i*3], dev = v[i*3+1], led = v[i*3+2];
-        arr[i] = { ...arr[i], adc, volt: +(adc * 0.002).toFixed(3), dev, led };
+        // ADS1015 (S1–S4): 2mV/count; ADS1115 (S5–S8): 0.125mV/count
+        const volt = i < 4 ? +(adc * 0.002).toFixed(3) : +(adc * 0.000125).toFixed(4);
+        arr[i] = { ...arr[i], adc, volt, dev, led };
         plotBuf[i].adc.push(adc); plotBuf[i].adc.shift();
         plotBuf[i].dev.push(dev); plotBuf[i].dev.shift();
 
@@ -78,9 +81,8 @@ function parseLine(raw) {
         const now = Date.now();
         if (led > 0 && _prevLed[i] === 0 && now - _lastHitTs[i] > HIT_COOLDOWN_MS) {
           _lastHitTs[i] = now;
-          // Velocity: thresh[0]=40 → min, thresh[3]=900 → max (map ke 1–127 MIDI-style)
-          const tMin = arr[i].thresh[0] ?? 40;
-          const tMax = arr[i].thresh[3] ?? 900;
+          const tMin = arr[i].thresh[0];
+          const tMax = arr[i].thresh[3];
           const velocity = Math.max(1, Math.min(127, Math.round((Math.abs(dev) - tMin) / (tMax - tMin) * 126) + 1));
           hitEvent.set({ idx: i, velocity, ts: now });
         }
@@ -92,16 +94,17 @@ function parseLine(raw) {
     chartTick.update(n => n + 1);
     return;
   }
-  m = RX_THR1.exec(line);
-  if (m) { const t = [1,2,3,4].map(i=>+m[i]); sensors.update(a=>{a[0]={...a[0],thresh:t};return a;}); return; }
-  m = RX_THR2.exec(line);
-  if (m) { const t = [1,2,3,4].map(i=>+m[i]); sensors.update(a=>{a[1]={...a[1],thresh:t};return a;}); return; }
-  m = RX_THR3.exec(line);
-  if (m) { const t = [1,2,3,4].map(i=>+m[i]); sensors.update(a=>{a[2]={...a[2],thresh:t};return a;}); return; }
-  m = RX_THR4.exec(line);
-  if (m) { const t = [1,2,3,4].map(i=>+m[i]); sensors.update(a=>{a[3]={...a[3],thresh:t};return a;}); return; }
+  m = RX_THR.exec(line);
+  if (m) {
+    const idx = +m[1] - 1;
+    if (idx >= 0 && idx < 8) {
+      const t = [2,3,4,5].map(i => +m[i]);
+      sensors.update(a => { a[idx] = { ...a[idx], thresh: t }; return a; });
+    }
+    return;
+  }
   m = RX_BASE.exec(line);
-  if (m) { const idx=+m[1]-1,base=+m[2]; sensors.update(a=>{a[idx]={...a[idx],baseline:base};return a;}); return; }
+  if (m) { const idx=+m[1]-1,base=+m[2]; if(idx>=0&&idx<8) sensors.update(a=>{a[idx]={...a[idx],baseline:base};return a;}); return; }
   m = RX_BTN.exec(line);
   if (m) { btnEvent.set({ btn: m[1], ts: Date.now() }); }
 }
