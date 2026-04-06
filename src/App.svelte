@@ -156,8 +156,14 @@
       if (led > 0 && !_loopTimers[i]) {
         const playOnce = () => {
           const sampleId = get(sensorSamples)[i];
-          if (!sampleId || !isRunning()) return;
-          const s   = get(sensors)[i];
+          if (!sampleId || !isRunning()) {
+            clearInterval(_loopTimers[i]); _loopTimers[i] = null; return;
+          }
+          const s = get(sensors)[i];
+          // Semak semula LED — hentikan jika magnet sudah diangkat
+          if (s.led === 0) {
+            clearInterval(_loopTimers[i]); _loopTimers[i] = null; return;
+          }
           const vel = Math.max(0.15, Math.min(1.0,
             (Math.abs(s.dev) - s.thresh[0]) / (s.thresh[3] - s.thresh[0])
           ));

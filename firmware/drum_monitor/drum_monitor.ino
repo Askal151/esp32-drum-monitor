@@ -219,11 +219,12 @@ void loop() {
         peakAdc[s] = adc;
         peakDev[s] = dev;
       }
-      // Rolling baseline: baseline perlahan ikut posisi rehat sensor
-      // alpha=0.0002 → time constant ≈ 10s (2ms × 5000 samples)
-      // Hit singkat (< 50ms) hanya ubah baseline < 1% — selamat diabaikan
-      if (baselineDone)
-        baseline[s] = (int16_t)(baseline[s] * 0.9998f + adc * 0.0002f);
+      // Rolling baseline: hanya update bila sensor TIDAK diaktifkan (dev < L2)
+      // Ini cegah baseline drift semasa magnet dekat — bila magnet diangkat,
+      // baseline kekal di posisi asal → dev cepat balik ke sifar
+      // alpha=0.0005 → TC ≈ 4s bila idle (lebih pantas daripada 10s)
+      if (baselineDone && abs(dev) < thresh[s][1])
+        baseline[s] = (int16_t)(baseline[s] * 0.9995f + adc * 0.0005f);
     }
   }
 
