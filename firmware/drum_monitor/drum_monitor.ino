@@ -49,18 +49,17 @@ inline int16_t readSensor(int s) {
 #define SERIAL_INTERVAL_MS   20
 #define SAMPLE_INTERVAL_MS   2
 
-// S1–S4: ADS1015 12-bit (1mV/count @ GAIN_TWO)
-// S5–S8: ADS1115 16-bit (0.0625mV/count @ GAIN_TWO)
-// Threshold minimum = maximum sensitivity
+// S1–S4: ADS1015 (1mV/count @ GAIN_TWO) — minimum threshold
+// S5–S8: ADS1115 (0.0625mV/count @ GAIN_TWO) — minimum threshold
 int thresh[NUM_SENSORS][4] = {
-  {15,  80,  250,  500},    // S1
-  {15,  80,  250,  500},    // S2
-  {15,  80,  250,  500},    // S3
-  {15,  80,  250,  500},    // S4
-  {200, 1000, 3000, 6000},  // S5
-  {200, 1000, 3000, 6000},  // S6
-  {200, 1000, 3000, 6000},  // S7
-  {200, 1000, 3000, 6000},  // S8
+  {10,  25,  60,  120},     // S1
+  {10,  25,  60,  120},     // S2
+  {10,  25,  60,  120},     // S3
+  {10,  25,  60,  120},     // S4
+  {80,  200, 600, 1200},    // S5
+  {80,  200, 600, 1200},    // S6
+  {80,  200, 600, 1200},    // S7
+  {80,  200, 600, 1200},    // S8
 };
 
 int16_t baseline[NUM_SENSORS] = {0};
@@ -210,7 +209,7 @@ void loop() {
   // 1. Poll button dulu (sebelum I2C)
   pollButtons();
 
-  // 2. Baca sensor tiap 2ms — peak detection
+  // 2. Baca sensor tiap 2ms — peak detection + rolling baseline
   if (now - lastSampleTime >= SAMPLE_INTERVAL_MS) {
     lastSampleTime = now;
     for (int s = 0; s < NUM_SENSORS; s++) {
@@ -220,6 +219,11 @@ void loop() {
         peakAdc[s] = adc;
         peakDev[s] = dev;
       }
+      // Rolling baseline: baseline perlahan ikut posisi rehat sensor
+      // alpha=0.0002 → time constant ≈ 10s (2ms × 5000 samples)
+      // Hit singkat (< 50ms) hanya ubah baseline < 1% — selamat diabaikan
+      if (baselineDone)
+        baseline[s] = (int16_t)(baseline[s] * 0.9998f + adc * 0.0002f);
     }
   }
 

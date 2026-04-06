@@ -292,16 +292,16 @@ const CHIPS  = ['ADS1015','ADS1015','ADS1015','ADS1015','ADS1115','ADS1115','ADS
 const COLORS = ['#22d3ee','#4ade80','#f59e0b','#f472b6','#a78bfa','#fb923c','#34d399','#f87171'];
 const LED_COLORS = ['#fbbf24','#f97316','#ef4444','#a855f7'];
 
-// Default threshold — GAIN_TWO, maximum sensitivity
+// Default threshold — GAIN_TWO, maximum sensitivity (sama dgn firmware)
 const thresh = [
-  [15,  80,  250,  500],
-  [15,  80,  250,  500],
-  [15,  80,  250,  500],
-  [15,  80,  250,  500],
-  [200, 1000, 3000, 6000],
-  [200, 1000, 3000, 6000],
-  [200, 1000, 3000, 6000],
-  [200, 1000, 3000, 6000],
+  [10,  25,  60,  120],   // S1 ADS1015
+  [10,  25,  60,  120],   // S2 ADS1015
+  [10,  25,  60,  120],   // S3 ADS1015
+  [10,  25,  60,  120],   // S4 ADS1015
+  [80,  200, 600, 1200],  // S5 ADS1115
+  [80,  200, 600, 1200],  // S6 ADS1115
+  [80,  200, 600, 1200],  // S7 ADS1115
+  [80,  200, 600, 1200],  // S8 ADS1115
 ];
 
 // State
