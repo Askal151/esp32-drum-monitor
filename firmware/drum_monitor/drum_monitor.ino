@@ -41,7 +41,7 @@ inline int16_t readSensor(int s) {
 
 // ── Sensor config ──────────────────────────────────────────────
 #define NUM_SENSORS          8
-#define SAMPLES_BASELINE     50
+#define SAMPLES_BASELINE     200        // lebih banyak sample = baseline lebih tepat
 #define DEBOUNCE_MS          80
 #define BASELINE_INTERVAL_MS 300000UL   // 5 minit
 
@@ -50,17 +50,17 @@ inline int16_t readSensor(int s) {
 #define SAMPLE_INTERVAL_MS   2
 
 // S1–S4: ADS1015 12-bit (1mV/count @ GAIN_TWO)
-// S5–S8: ADS1115 16-bit (0.0625mV/count @ GAIN_TWO) → ×32 dari ADS1015
-// Threshold lebih rendah = lebih sensitif
+// S5–S8: ADS1115 16-bit (0.0625mV/count @ GAIN_TWO)
+// Threshold minimum = maximum sensitivity
 int thresh[NUM_SENSORS][4] = {
-  {30,  150,  400,  700},    // S1
-  {30,  150,  400,  700},    // S2
-  {30,  150,  400,  700},    // S3
-  {30,  150,  400,  700},    // S4
-  {500, 2500, 6000, 11000},  // S5
-  {500, 2500, 6000, 11000},  // S6
-  {500, 2500, 6000, 11000},  // S7
-  {500, 2500, 6000, 11000},  // S8
+  {15,  80,  250,  500},    // S1
+  {15,  80,  250,  500},    // S2
+  {15,  80,  250,  500},    // S3
+  {15,  80,  250,  500},    // S4
+  {200, 1000, 3000, 6000},  // S5
+  {200, 1000, 3000, 6000},  // S6
+  {200, 1000, 3000, 6000},  // S7
+  {200, 1000, 3000, 6000},  // S8
 };
 
 int16_t baseline[NUM_SENSORS] = {0};
@@ -119,17 +119,25 @@ void setup() {
   Serial.println("[READY]");
 }
 
-// ── Calibrate baseline ─────────────────────────────────────────
+// ── Sort helper untuk median ────────────────────────────────────
+void sortArr(int16_t* arr, int n) {
+  for (int i = 0; i < n-1; i++)
+    for (int j = i+1; j < n; j++)
+      if (arr[j] < arr[i]) { int16_t t = arr[i]; arr[i] = arr[j]; arr[j] = t; }
+}
+
+// ── Calibrate baseline (median filter) ────────────────────────
+// Median lebih tahan outlier berbanding average
 void calibrateBaseline() {
   Serial.println("[CAL] Mengambil baseline...");
-  long sum[NUM_SENSORS] = {0};
-  for (int n = 0; n < SAMPLES_BASELINE; n++) {
-    for (int s = 0; s < NUM_SENSORS; s++)
-      sum[s] += readSensor(s);
-    delay(5);
-  }
+  int16_t buf[SAMPLES_BASELINE];
   for (int s = 0; s < NUM_SENSORS; s++) {
-    baseline[s] = sum[s] / SAMPLES_BASELINE;
+    for (int n = 0; n < SAMPLES_BASELINE; n++) {
+      buf[n] = readSensor(s);
+      delay(2);
+    }
+    sortArr(buf, SAMPLES_BASELINE);
+    baseline[s] = buf[SAMPLES_BASELINE / 2];   // median
     peakAdc[s]  = baseline[s];
     peakDev[s]  = 0;
     Serial.printf("[INIT S%d] baseline=%d\n", s+1, baseline[s]);
