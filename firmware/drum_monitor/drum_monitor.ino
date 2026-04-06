@@ -91,8 +91,7 @@ void setup() {
   Wire.begin();
 
   // ADS1015 @ 0x48
-  ads1.setI2CAddress(0x48);
-  if (!ads1.begin()) {
+  if (!ads1.begin(0x48)) {
     Serial.println("[ERR] ADS1015 (0x48) tidak ditemui!");
     while (1) delay(500);
   }
@@ -100,8 +99,7 @@ void setup() {
   ads1.setDataRate(RATE_ADS1015_3300SPS);
 
   // ADS1115 @ 0x49
-  ads2.setI2CAddress(0x49);
-  if (!ads2.begin()) {
+  if (!ads2.begin(0x49)) {
     Serial.println("[ERR] ADS1115 (0x49) tidak ditemui!");
     while (1) delay(500);
   }
