@@ -23,7 +23,7 @@
   } from './lib/sampleStore.js';
 
   const CLR   = ['#22d3ee', '#4ade80', '#f59e0b', '#f472b6', '#a78bfa', '#fb923c', '#34d399', '#f87171'];
-  const NAMES = ['SNARE', 'KICK', 'TOM', 'HI-HAT', 'CRASH', 'RIDE', 'PERC1', 'PERC2'];
+  const NAMES = ['Congkak 1', 'Congkak 2', 'Congkak 3', 'Congkak 4', 'Congkak 5', 'Congkak 6', 'Congkak 7', 'Congkak 8'];
 
   let tab = 'drum';
   let lastError   = '';
