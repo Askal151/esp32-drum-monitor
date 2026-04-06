@@ -43,7 +43,7 @@ inline int16_t readSensor(int s) {
 #define NUM_SENSORS          8
 #define SAMPLES_BASELINE     200        // lebih banyak sample = baseline lebih tepat
 #define DEBOUNCE_MS          80
-#define BASELINE_INTERVAL_MS 300000UL   // 5 minit
+#define BASELINE_INTERVAL_MS 30000UL    // 30 saat — recal bila semua sensor idle
 
 // Output ke serial tiap 20ms (50Hz), baca sensor tiap 2ms (500Hz)
 #define SERIAL_INTERVAL_MS   20
@@ -209,7 +209,10 @@ void loop() {
   // 1. Poll button dulu (sebelum I2C)
   pollButtons();
 
-  // 2. Baca sensor tiap 2ms — peak detection + rolling baseline
+  // 2. Baca sensor tiap 2ms — peak detection sahaja
+  // Baseline TIDAK diupdate di sini — rolling baseline menyebabkan baseline
+  // drift ke posisi magnet → bila magnet diangkat, abs(dev) besar → bunyi lengket
+  // Baseline diurus oleh: calibrateBaseline() at boot + auto-recal 5 minit
   if (now - lastSampleTime >= SAMPLE_INTERVAL_MS) {
     lastSampleTime = now;
     for (int s = 0; s < NUM_SENSORS; s++) {
@@ -219,12 +222,6 @@ void loop() {
         peakAdc[s] = adc;
         peakDev[s] = dev;
       }
-      // Rolling baseline: hanya update bila sensor TIDAK diaktifkan (dev < L2)
-      // Ini cegah baseline drift semasa magnet dekat — bila magnet diangkat,
-      // baseline kekal di posisi asal → dev cepat balik ke sifar
-      // alpha=0.0005 → TC ≈ 4s bila idle (lebih pantas daripada 10s)
-      if (baselineDone && abs(dev) < thresh[s][1])
-        baseline[s] = (int16_t)(baseline[s] * 0.9995f + adc * 0.0005f);
     }
   }
 
@@ -252,16 +249,23 @@ void loop() {
       peakDev[s] = 0;
     }
 
-    // Auto re-calibrate baseline bila semua sensor idle (setiap 5 minit)
+    // Auto re-calibrate bila semua sensor idle (setiap 30 saat)
+    // Ambil median 20 sample — lebih tepat dari single reading
     if (baselineDone && now - lastBaselineTime > BASELINE_INTERVAL_MS) {
       bool allIdle = true;
       for (int s = 0; s < NUM_SENSORS; s++)
         if (led[s] > 0) { allIdle = false; break; }
       if (allIdle) {
+        int16_t buf[20];
         for (int s = 0; s < NUM_SENSORS; s++) {
-          int16_t nb = readSensor(s);
-          baseline[s] = (int16_t)(baseline[s] * 0.9f + nb * 0.1f);
-          Serial.printf("[AUTO S%d] baseline=%d\n", s+1, baseline[s]);
+          for (int n = 0; n < 20; n++) { buf[n] = readSensor(s); delay(2); }
+          sortArr(buf, 20);
+          int16_t med = buf[10];
+          // Hanya update jika perbezaan kecil — elak lompatan besar
+          if (abs(med - baseline[s]) < 200) {
+            baseline[s] = med;
+            Serial.printf("[AUTO S%d] baseline=%d\n", s+1, baseline[s]);
+          }
         }
         lastBaselineTime = now;
       }
