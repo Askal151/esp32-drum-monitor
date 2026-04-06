@@ -9,8 +9,8 @@
  * CATATAN PIN:
  *   GPIO 25/26 = mendukung INPUT_PULLUP (active LOW)
  *   I2C : SDA=21, SCL=22 (kongsi oleh kedua-dua ADS)
- *   ADS1015 ADDR pin → GND  (alamat 0x48)
- *   ADS1115 ADDR pin → VDD  (alamat 0x49)
+ *   ADS1015 ADDR pin → GND  (alamat 0x48) — GAIN_TWO, 1mV/count
+ *   ADS1115 ADDR pin → VDD  (alamat 0x49) — GAIN_TWO, 0.0625mV/count
  *
  * Serial Output @ 115200:
  *   HALL8|adc1|dev1|led1|...|adc8|dev8|led8  (24 nilai)
@@ -49,17 +49,18 @@ inline int16_t readSensor(int s) {
 #define SERIAL_INTERVAL_MS   20
 #define SAMPLE_INTERVAL_MS   2
 
-// S1–S4: ADS1015 12-bit (2mV/count @ GAIN_ONE)
-// S5–S8: ADS1115 16-bit (0.125mV/count @ GAIN_ONE) → ×16 dari ADS1015
+// S1–S4: ADS1015 12-bit (1mV/count @ GAIN_TWO)
+// S5–S8: ADS1115 16-bit (0.0625mV/count @ GAIN_TWO) → ×32 dari ADS1015
+// Threshold lebih rendah = lebih sensitif
 int thresh[NUM_SENSORS][4] = {
-  {40,  200,  500,  900},   // S1
-  {40,  200,  500,  900},   // S2
-  {40,  200,  500,  900},   // S3
-  {40,  200,  500,  900},   // S4
-  {640, 3200, 8000, 14400}, // S5
-  {640, 3200, 8000, 14400}, // S6
-  {640, 3200, 8000, 14400}, // S7
-  {640, 3200, 8000, 14400}, // S8
+  {30,  150,  400,  700},    // S1
+  {30,  150,  400,  700},    // S2
+  {30,  150,  400,  700},    // S3
+  {30,  150,  400,  700},    // S4
+  {500, 2500, 6000, 11000},  // S5
+  {500, 2500, 6000, 11000},  // S6
+  {500, 2500, 6000, 11000},  // S7
+  {500, 2500, 6000, 11000},  // S8
 };
 
 int16_t baseline[NUM_SENSORS] = {0};
@@ -95,7 +96,7 @@ void setup() {
     Serial.println("[ERR] ADS1015 (0x48) tidak ditemui!");
     while (1) delay(500);
   }
-  ads1.setGain(GAIN_ONE);
+  ads1.setGain(GAIN_TWO);   // ±2.048V — 1mV/count, 2× lebih sensitif
   ads1.setDataRate(RATE_ADS1015_3300SPS);
 
   // ADS1115 @ 0x49
@@ -103,7 +104,7 @@ void setup() {
     Serial.println("[ERR] ADS1115 (0x49) tidak ditemui!");
     while (1) delay(500);
   }
-  ads2.setGain(GAIN_ONE);
+  ads2.setGain(GAIN_TWO);   // ±2.048V — 0.0625mV/count, 2× lebih sensitif
   ads2.setDataRate(RATE_ADS1115_860SPS);
 
   calibrateBaseline();
