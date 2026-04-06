@@ -70,6 +70,14 @@ unsigned long lastBaselineTime = 0;
 int16_t peakAdc[NUM_SENSORS] = {0};
 int16_t peakDev[NUM_SENSORS] = {0};
 
+// ── Hysteresis counter (cegah cross-trigger antara sensor) ────
+// LED hanya aktif bila devasi kekal > threshold 2 frame berturut-turut (40ms)
+// LED hanya mati bila devasi < threshold 2 frame berturut-turut (40ms)
+uint8_t hitConfirm[NUM_SENSORS] = {0};   // frame counter naik
+uint8_t idleConfirm[NUM_SENSORS] = {0};  // frame counter turun
+int     ledState[NUM_SENSORS]    = {0};  // LED state selepas hysteresis
+#define CONFIRM_FRAMES 2
+
 // ── Debounce state ─────────────────────────────────────────────
 bool          prevBtnNav  = HIGH;
 bool          prevBtnSel  = HIGH;
@@ -96,7 +104,7 @@ void setup() {
     while (1) delay(500);
   }
   ads1.setGain(GAIN_TWO);   // ±2.048V — 1mV/count, 2× lebih sensitif
-  ads1.setDataRate(RATE_ADS1015_3300SPS);
+  ads1.setDataRate(RATE_ADS1015_1600SPS);  // 3300→1600 kurangkan noise antara channel
 
   // ADS1115 @ 0x49
   if (!ads2.begin(0x49)) {
@@ -230,8 +238,23 @@ void loop() {
     lastSerialTime = now;
 
     int led[NUM_SENSORS];
-    for (int s = 0; s < NUM_SENSORS; s++)
-      led[s] = computeLed(s, peakDev[s]);
+    for (int s = 0; s < NUM_SENSORS; s++) {
+      int raw = computeLed(s, peakDev[s]);
+
+      if (raw > 0) {
+        // Devasi hadir — kira frame naik
+        if (hitConfirm[s] < CONFIRM_FRAMES) hitConfirm[s]++;
+        idleConfirm[s] = 0;
+        if (hitConfirm[s] >= CONFIRM_FRAMES) ledState[s] = raw;
+      } else {
+        // Devasi hilang — kira frame turun
+        if (idleConfirm[s] < CONFIRM_FRAMES) idleConfirm[s]++;
+        hitConfirm[s] = 0;
+        if (idleConfirm[s] >= CONFIRM_FRAMES) ledState[s] = 0;
+      }
+
+      led[s] = ledState[s];
+    }
 
     Serial.printf("HALL8|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d\n",
       peakAdc[0], peakDev[0], led[0],
