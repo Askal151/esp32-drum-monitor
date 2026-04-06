@@ -12,9 +12,9 @@
     saveSample, deleteSample,
   } from './sampleStore.js';
 
-  const SENSOR_NAMES  = ['SNARE', 'KICK', 'TOM', 'HI-HAT'];
-  const SENSOR_ICONS  = ['🥁', '🎹', '🪘', '🎵'];
-  const SENSOR_COLORS = ['#22d3ee', '#4ade80', '#f59e0b', '#f472b6'];
+  const SENSOR_NAMES  = ['Congkak 1','Congkak 2','Congkak 3','Congkak 4','Congkak 5','Congkak 6','Congkak 7','Congkak 8'];
+  const SENSOR_ICONS  = ['🪘','🪘','🪘','🪘','🪘','🪘','🪘','🪘'];
+  const SENSOR_COLORS = ['#22d3ee','#4ade80','#f59e0b','#f472b6','#a78bfa','#fb923c','#34d399','#f87171'];
   const GROUPS = [...new Set(SAMPLES.map(s => s.group))];
 
   $: visible = $pickerState !== 'idle';
@@ -80,8 +80,8 @@
 
     <!-- ── STATE: SENSOR ── -->
     {#if $pickerState === 'sensor'}
-      <div class="p-3 grid grid-cols-2 gap-2">
-        {#each [0,1,2,3] as i}
+      <div class="p-3 grid grid-cols-4 gap-2">
+        {#each [0,1,2,3,4,5,6,7] as i}
           {@const isActive = $selectedSensor === i}
           {@const saved    = getSample($sensorSamples[i])}
           <button

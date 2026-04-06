@@ -12,8 +12,8 @@
   } from './sampleStore.js';
   import { getAudioCtx, ensureRunning } from './audio.js';
 
-  const SENSOR_NAMES  = ['SNARE', 'KICK', 'TOM', 'HI-HAT'];
-  const SENSOR_COLORS = ['#22d3ee', '#4ade80', '#f59e0b', '#f472b6'];
+  const SENSOR_NAMES  = ['Congkak 1','Congkak 2','Congkak 3','Congkak 4','Congkak 5','Congkak 6','Congkak 7','Congkak 8'];
+  const SENSOR_COLORS = ['#22d3ee','#4ade80','#f59e0b','#f472b6','#a78bfa','#fb923c','#34d399','#f87171'];
 
   const GROUPS = [...new Set(SAMPLES.map(s => s.group))];
 
@@ -36,7 +36,7 @@
   }
 
   // Scroll item kursor ke dalam view saat berubah
-  let listEls = [null, null, null, null];
+  let listEls = [null, null, null, null, null, null, null, null];
   $: {
     const si = $selectedSensor;
     const ci = $cursorIdx[si];
@@ -60,9 +60,9 @@
     >🎵 Pilih Sample</button>
   </div>
 
-  <!-- 4 Sensor columns -->
+  <!-- 8 Sensor columns -->
   <div class="grid grid-cols-4 gap-2 flex-1 min-h-0">
-    {#each [0, 1, 2, 3] as si}
+    {#each [0, 1, 2, 3, 4, 5, 6, 7] as si}
       {@const savedId  = $sensorSamples[si]}
       {@const saved    = getSample(savedId)}
       {@const cursor   = $cursorIdx[si]}
