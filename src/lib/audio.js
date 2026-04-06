@@ -14,6 +14,25 @@ function getCtx() {
   return ctx;
 }
 
+// ── Cleanup helper — disconnect semua nodes selepas bunyi selesai ──
+// Tanpa ini, nodes terkumpul dalam audio graph → crash selepas ~1 minit
+function schedCleanup(nodes, maxDurSec) {
+  setTimeout(() => {
+    for (const n of nodes) { try { n.disconnect(); } catch {} }
+  }, Math.ceil(maxDurSec * 1000) + 200);
+}
+
+// ── Cached noise buffers — elak allocate buffer baru setiap hit ──
+const _noiseCacheMap = new Map();
+function getCachedNoise(ac, size) {
+  if (_noiseCacheMap.has(size)) return _noiseCacheMap.get(size);
+  const buf = ac.createBuffer(1, size, ac.sampleRate);
+  const d   = buf.getChannelData(0);
+  for (let i = 0; i < size; i++) d[i] = Math.random() * 2 - 1;
+  _noiseCacheMap.set(size, buf);
+  return buf;
+}
+
 // Pastikan AudioContext dalam state 'running' — await ini sebelum schedule
 export async function ensureRunning() {
   const ac = getCtx();
@@ -342,6 +361,7 @@ export function scheduleKick(time, velocity = 1.0) {
 
   osc.start(time);   osc.stop(time + 0.55);
   click.start(time); click.stop(time + 0.03);
+  schedCleanup([osc, click, cg, lp, dist, master], 0.6);
 }
 
 export function scheduleSnare(time, velocity = 1.0) {
@@ -380,6 +400,7 @@ export function scheduleSnare(time, velocity = 1.0) {
 
   noise.start(time); noise.stop(time + 0.25);
   body.start(time);  body.stop(time + 0.1);
+  schedCleanup([noise, bp, hp, body, bg, master], 0.35);
 }
 
 export function scheduleHihat(time, velocity = 0.5, open = false) {
@@ -406,6 +427,7 @@ export function scheduleHihat(time, velocity = 0.5, open = false) {
 
   noise.connect(hp); hp.connect(bp); bp.connect(master);
   noise.start(time); noise.stop(time + dur + 0.05);
+  schedCleanup([noise, hp, bp, master], dur + 0.15);
 }
 
 export function scheduleClap(time, velocity = 0.8) {
@@ -413,14 +435,12 @@ export function scheduleClap(time, velocity = 0.8) {
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
   // 3 noise burst cepat untuk kesan clap
+  const clapNodes = [];
+  const clapBuf = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.08));
   for (let i = 0; i < 3; i++) {
     const t = time + i * 0.012;
-    const size = Math.floor(ac.sampleRate * 0.08);
-    const buf  = ac.createBuffer(1, size, ac.sampleRate);
-    const d    = buf.getChannelData(0);
-    for (let j = 0; j < size; j++) d[j] = Math.random() * 2 - 1;
     const noise = ac.createBufferSource();
-    noise.buffer = buf;
+    noise.buffer = clapBuf;
 
     const bp = ac.createBiquadFilter();
     bp.type = 'bandpass'; bp.frequency.value = 1200; bp.Q.value = 0.5;
@@ -434,7 +454,9 @@ export function scheduleClap(time, velocity = 0.8) {
 
     noise.connect(bp); bp.connect(hp); hp.connect(g);
     noise.start(t); noise.stop(t + 0.08);
+    clapNodes.push(noise, bp, hp, g);
   }
+  schedCleanup(clapNodes, 0.15);
 }
 
 export function scheduleRim(time, velocity = 0.7) {
@@ -456,6 +478,7 @@ export function scheduleRim(time, velocity = 0.7) {
 
   osc.connect(bp); bp.connect(g);
   osc.start(time); osc.stop(time + 0.07);
+  schedCleanup([osc, bp, g], 0.15);
 }
 
 export function getAudioCtx() { return getCtx(); }
@@ -547,6 +570,7 @@ export function scheduleSynth(freq, time, velocity = 0.8, duration = 0.25) {
   osc1.start(time); osc1.stop(stopAt);
   osc2.start(time); osc2.stop(stopAt);
   sub.start(time);  sub.stop(stopAt);
+  schedCleanup([osc1, osc2, sub, subGain, filter, master], dur + 0.15);
 }
 
 // ── Tagading Batak ─────────────────────────────────────────────
@@ -621,6 +645,7 @@ export function scheduleTaganing(time, velocity = 1.0) {
   body.start(time);  body.stop(time + 0.58);
   body2.start(time); body2.stop(time + 0.2);
   skin.start(time);  skin.stop(time + 0.07);
+  schedCleanup([tok, tokLp, tokG, body, bodyG, body2, body2G, skin, skinBp, skinG, rvSend, master], 0.7);
 }
 
 /** Odap — drum pengiring lebih kecil, bunyi lebih kering & pendek */
@@ -655,6 +680,7 @@ export function scheduleOdap(time, velocity = 1.0) {
 
   tok.start(time);  tok.stop(time + 0.022);
   body.start(time); body.stop(time + 0.3);
+  schedCleanup([tok, tokLp, tokG, body, bodyG, master], 0.4);
 }
 
 /** Hesek — instrumen perkusi logam (seperti gong kecil/simbal Batak) */
@@ -663,9 +689,10 @@ export function scheduleHesek(time, velocity = 0.6) {
   const vel = Math.max(0.05, Math.min(1.0, velocity));
 
   // Bunyi metalik: campuran frekuensi tidak harmonik (gong karakter)
-  const freqs    = [3200, 4750, 6800, 9200];  // rasio tidak harmonik → metalik
+  const freqs    = [3200, 4750, 6800, 9200];
   const decays   = [0.12, 0.08, 0.05, 0.03];
   const amps     = [0.35, 0.25, 0.18, 0.12];
+  const hesekNodes = [];
 
   for (let i = 0; i < freqs.length; i++) {
     const osc = ac.createOscillator();
@@ -677,15 +704,12 @@ export function scheduleHesek(time, velocity = 0.6) {
     g.connect(ac.destination);
     osc.connect(g);
     osc.start(time); osc.stop(time + decays[i] + 0.01);
+    hesekNodes.push(osc, g);
   }
 
-  // Noise pukulan pendek
-  const nSize = Math.floor(ac.sampleRate * 0.012);
-  const nBuf  = ac.createBuffer(1, nSize, ac.sampleRate);
-  const nD    = nBuf.getChannelData(0);
-  for (let i = 0; i < nSize; i++) nD[i] = (Math.random() * 2 - 1) * (1 - i / nSize);
+  // Noise pukulan pendek (cached)
   const noise = ac.createBufferSource();
-  noise.buffer = nBuf;
+  noise.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.012));
   const nhp = ac.createBiquadFilter();
   nhp.type  = 'highpass'; nhp.frequency.value = 5000;
   const ng  = ac.createGain();
@@ -694,6 +718,8 @@ export function scheduleHesek(time, velocity = 0.6) {
   ng.connect(ac.destination);
   noise.connect(nhp); nhp.connect(ng);
   noise.start(time); noise.stop(time + 0.015);
+  hesekNodes.push(noise, nhp, ng);
+  schedCleanup(hesekNodes, 0.2);
 }
 
 /** Gordang — gendang besar seremonial Batak, bunyi booming dalam */
@@ -745,6 +771,7 @@ export function scheduleGordang(time, velocity = 1.0) {
   sub.start(time);   sub.stop(time + 0.8);
   punch.start(time); punch.stop(time + 0.06);
   skin.start(time);  skin.stop(time + 0.09);
+  schedCleanup([sub, subG, subLp, subDist, punch, punchG, skin, skinLp, skinG, master], 1.0);
 }
 
 // ── Hasapi Batak ───────────────────────────────────────────────
@@ -874,6 +901,7 @@ export function scheduleHasapi(freq, time, velocity = 0.8) {
   osc2.start(time);   osc2.stop(time + 1.25);
   h2.start(time);     h2.stop(time + 0.58);
   h3.start(time);     h3.stop(time + 0.25);
+  schedCleanup([pluck, plBp, plG, osc1, lpf, env1, osc2, lpf2, env2, h2, h2g, h3, h3g, master, bodyEQ, rvG], 2.2);
 }
 
 function makeDistCurve(amount) {

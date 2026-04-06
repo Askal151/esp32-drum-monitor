@@ -134,16 +134,26 @@
   });
 
   // ── Sustained loop: mainkan sample terus-menerus selagi LED > 0 ──
-  // Retrigger setiap LOOP_MS supaya bunyi tidak putus
-  const LOOP_MS = 150;
+  // LOOP_MS disesuaikan dengan decay semulajadi setiap sample
+  // supaya nodes tidak bertindih (punca crash sebelum ini)
+  const LOOP_MS_MAP = {
+    kick:     600,   snare:    300,  hihat:    180,
+    clap:     250,   rim:      180,  taganing: 650,
+    odap:     380,   hesek:    220,  gordang:  950,
+    syn_c3:   350,   syn_e3:   350,  syn_g3:   350,
+    syn_a3:   350,   syn_c4:   350,
+    has_d4:   2200,  has_e4:   2200, has_g4:   2200, has_a4:   2200,
+  };
+  const DEFAULT_LOOP_MS = 400;
   const _loopTimers = new Array(8).fill(null);
 
   sensors.subscribe(arr => {
     if (!audioEnabled || !isRunning()) return;
+    const ac = getAudioCtx();
+    if (ac.state !== 'running') return;   // elak jika AudioContext suspended
     for (let i = 0; i < 8; i++) {
       const led = arr[i].led;
       if (led > 0 && !_loopTimers[i]) {
-        // Mula loop untuk sensor ini
         const playOnce = () => {
           const sampleId = get(sensorSamples)[i];
           if (!sampleId || !isRunning()) return;
@@ -151,12 +161,13 @@
           const vel = Math.max(0.15, Math.min(1.0,
             (Math.abs(s.dev) - s.thresh[0]) / (s.thresh[3] - s.thresh[0])
           ));
-          SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, vel);
+          SAMPLE_FNS[sampleId]?.(ac.currentTime, vel);
         };
+        const sampleId = get(sensorSamples)[i];
+        const loopMs = LOOP_MS_MAP[sampleId] ?? DEFAULT_LOOP_MS;
         playOnce();
-        _loopTimers[i] = setInterval(playOnce, LOOP_MS);
+        _loopTimers[i] = setInterval(playOnce, loopMs);
       } else if (led === 0 && _loopTimers[i]) {
-        // Hentikan loop apabila sensor kembali idle
         clearInterval(_loopTimers[i]);
         _loopTimers[i] = null;
       }
