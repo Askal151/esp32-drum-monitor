@@ -157,10 +157,21 @@
   });
 
   // ── BPM control dari potensio + button BPMNAV ────────────────
-  bpmCtrl.subscribe(({ sel, bpm: b }) => {
-    _sensorBpm[sel] = b;          // update array plain JS (dibaca dalam closure)
-    sensorBpm = [..._sensorBpm];  // trigger Svelte re-render untuk template
-  });
+  // $: reactive statement (Svelte 5 safe) — jalankan setiap kali $bpmCtrl berubah
+  // Ini lebih reliable dari .subscribe() dalam Svelte 5
+  $: {
+    const { sel, bpm: b } = $bpmCtrl;
+    _sensorBpm[sel] = b;
+    sensorBpm = [..._sensorBpm];
+  }
+
+  // Helper — update BPM sesuatu sensor (dari keyboard shortcut atau UI button)
+  function applyBpm(sel, bpm) {
+    const b = Math.max(40, Math.min(200, bpm));
+    _sensorBpm[sel] = b;
+    sensorBpm = [..._sensorBpm];
+    bpmCtrl.set({ sel, bpm: b });
+  }
 
   // ── Button fizikal NAV / SEL ───────────────────────────────────
   btnEvent.subscribe(e => {
@@ -202,10 +213,17 @@
   function rend()    { resizing=false; }
 
   // Keyboard shortcut untuk test: N = NAV, S = SEL
+  // BPM: B = next sensor, [ = -5 BPM, ] = +5 BPM
   function onKeydown(e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if (e.key === 'n' || e.key === 'N') { btnNav(isRunning() ? getAudioCtx() : null); tab = 'assign'; }
     if (e.key === 's' || e.key === 'S') { btnSel(); }
+    if (e.key === 'b' || e.key === 'B') {
+      const nextSel = (get(bpmCtrl).sel + 1) % 8;
+      bpmCtrl.set({ sel: nextSel, bpm: _sensorBpm[nextSel] });
+    }
+    if (e.key === '[') { const s = get(bpmCtrl).sel; applyBpm(s, _sensorBpm[s] - 5); }
+    if (e.key === ']') { const s = get(bpmCtrl).sel; applyBpm(s, _sensorBpm[s] + 5); }
   }
 </script>
 
@@ -271,12 +289,31 @@
 
   <!-- SENSOR SELECTOR — 4 butang pilih sensor + sample + beat indicator -->
   <section class="card p-3 flex flex-col gap-2">
-    <!-- BPM control indicator dari potensio + button BPMNAV -->
-    <div class="flex items-center gap-2 px-1">
-      <span class="text-[10px] text-slate-600">🎛 BPM Ctrl:</span>
-      <span class="text-[10px] font-bold" style="color:{CLR[$bpmCtrl.sel]}">{NAMES[$bpmCtrl.sel]}</span>
-      <span class="text-[10px] font-bold text-white">{$bpmCtrl.bpm} BPM</span>
-      <span class="text-[10px] text-slate-700 ml-1">· putar pot / tekan BPMNAV</span>
+    <!-- BPM control panel — potensio + button BPMNAV / keyboard B [ ] -->
+    <div class="flex items-center gap-2 px-1 py-1 rounded-lg bg-slate-900 border border-slate-800">
+      <span class="text-[10px] text-slate-500 shrink-0">🎛 BPM:</span>
+      <!-- Butang cycle sensor (simulasi button BPMNAV) -->
+      <button
+        class="text-[10px] px-2 py-0.5 rounded font-bold border transition-colors shrink-0"
+        style="border-color:{CLR[$bpmCtrl.sel]}44; color:{CLR[$bpmCtrl.sel]}; background:{CLR[$bpmCtrl.sel]}15"
+        on:click={() => { const next = ($bpmCtrl.sel + 1) % 8; bpmCtrl.set({ sel: next, bpm: _sensorBpm[next] }); }}
+        title="Cycle sensor (B)"
+      >▶ {NAMES[$bpmCtrl.sel]}</button>
+      <!-- Butang - BPM -->
+      <button
+        class="text-xs w-6 h-6 rounded bg-slate-800 text-slate-400 hover:bg-slate-700 font-bold shrink-0"
+        on:click={() => applyBpm($bpmCtrl.sel, sensorBpm[$bpmCtrl.sel] - 5)}
+        title="BPM -5 ([)"
+      >−</button>
+      <!-- BPM value display -->
+      <span class="text-sm font-bold text-white w-12 text-center shrink-0">{sensorBpm[$bpmCtrl.sel]}</span>
+      <!-- Butang + BPM -->
+      <button
+        class="text-xs w-6 h-6 rounded bg-slate-800 text-slate-400 hover:bg-slate-700 font-bold shrink-0"
+        on:click={() => applyBpm($bpmCtrl.sel, sensorBpm[$bpmCtrl.sel] + 5)}
+        title="BPM +5 (])"
+      >+</button>
+      <span class="text-[10px] text-slate-600 ml-1 shrink-0">BPM · kb: B [ ]</span>
     </div>
     <!-- Stop All -->
     {#if seqActive.some(Boolean)}
