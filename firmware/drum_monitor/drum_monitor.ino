@@ -3,19 +3,23 @@
  * Sensor : 8x Hall Effect
  *   ADS1015 @ 0x48 (ADDR=GND) — S1–S4 (A0–A3)
  *   ADS1115 @ 0x49 (ADDR=VDD) — S5–S8 (A0–A3)
- * Button NAV : GPIO 26  — tekan untuk next sample
- * Button SEL : GPIO 25  — tekan untuk simpan/confirm sample
+ * Button NAV    : GPIO 26  — tekan untuk next sample
+ * Button SEL    : GPIO 25  — tekan untuk simpan/confirm sample
+ * Button BPMNAV : GPIO 27  — tekan untuk pilih sensor BPM (S1→S2→...→S8→S1)
+ * Potensio BPM  : GPIO 34  — putar untuk ubah BPM sensor dipilih (40–200 BPM)
  *
  * CATATAN PIN:
- *   GPIO 25/26 = mendukung INPUT_PULLUP (active LOW)
+ *   GPIO 25/26/27 = mendukung INPUT_PULLUP (active LOW)
+ *   GPIO 34       = ADC1 CH6, input-only, untuk potensio
  *   I2C : SDA=21, SCL=22 (kongsi oleh kedua-dua ADS)
  *   ADS1015 ADDR pin → GND  (alamat 0x48) — GAIN_TWO, 1mV/count
  *   ADS1115 ADDR pin → VDD  (alamat 0x49) — GAIN_TWO, 0.0625mV/count
  *
  * Serial Output @ 115200:
  *   HALL8|adc1|dev1|led1|...|adc8|dev8|led8  (24 nilai)
- *   [BTN]NAV  — button NAV ditekan  (GPIO 26)
- *   [BTN]SEL  — button SEL ditekan  (GPIO 25)
+ *   [BTN]NAV         — button NAV ditekan  (GPIO 26)
+ *   [BTN]SEL         — button SEL ditekan  (GPIO 25)
+ *   [BPMCTRL]sel|bpm — BPM semasa (setiap 100ms), sel=0–7
  *
  * Threshold:
  *   S1–S4 (ADS1015, 12-bit): level 1 = 40 counts (~80mV)
@@ -36,8 +40,12 @@ inline int16_t readSensor(int s) {
 }
 
 // ── Pin Button (active LOW, internal pull-up) ──────────────────
-#define BTN_NAV 26
-#define BTN_SEL 25
+#define BTN_NAV    26
+#define BTN_SEL    25
+#define BTN_BPMNAV 27   // Button pilih sensor BPM
+
+// ── Pin Potensio BPM ───────────────────────────────────────────
+#define POT_BPM    34   // ADC1 CH6, input-only
 
 // ── Sensor config ──────────────────────────────────────────────
 #define NUM_SENSORS          8
@@ -79,22 +87,30 @@ int     ledState[NUM_SENSORS]    = {0};  // LED state selepas hysteresis
 #define CONFIRM_FRAMES 2
 
 // ── Debounce state ─────────────────────────────────────────────
-bool          prevBtnNav  = HIGH;
-bool          prevBtnSel  = HIGH;
-unsigned long lastNavTime = 0;
-unsigned long lastSelTime = 0;
+bool          prevBtnNav    = HIGH;
+bool          prevBtnSel    = HIGH;
+bool          prevBtnBpmNav = HIGH;
+unsigned long lastNavTime    = 0;
+unsigned long lastSelTime    = 0;
+unsigned long lastBpmNavTime = 0;
+
+// ── BPM control state ──────────────────────────────────────────
+int           bpmSel         = 0;     // Sensor yang dipilih untuk BPM (0–7)
 
 // ── Timing ────────────────────────────────────────────────────
 unsigned long lastSampleTime = 0;
 unsigned long lastSerialTime = 0;
+unsigned long lastBpmSendTime = 0;
+#define BPM_SEND_INTERVAL_MS 100      // Hantar [BPMCTRL] setiap 100ms
 
 // ── Setup ──────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
   delay(300);
 
-  pinMode(BTN_NAV, INPUT_PULLUP);
-  pinMode(BTN_SEL, INPUT_PULLUP);
+  pinMode(BTN_NAV,    INPUT_PULLUP);
+  pinMode(BTN_SEL,    INPUT_PULLUP);
+  pinMode(BTN_BPMNAV, INPUT_PULLUP);
 
   Wire.begin();
 
@@ -121,8 +137,9 @@ void setup() {
       thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3]);
   }
 
-  Serial.printf("[DEBUG] NAV=%d SEL=%d\n",
-    digitalRead(BTN_NAV), digitalRead(BTN_SEL));
+  Serial.printf("[DEBUG] NAV=%d SEL=%d BPMNAV=%d POT=%d\n",
+    digitalRead(BTN_NAV), digitalRead(BTN_SEL),
+    digitalRead(BTN_BPMNAV), analogRead(POT_BPM));
   Serial.println("[READY]");
 }
 
@@ -161,6 +178,12 @@ int computeLed(int sIdx, int16_t dev) {
   return 0;
 }
 
+// ── Baca potensio → BPM (40–200) ──────────────────────────────
+int readBpm() {
+  int raw = analogRead(POT_BPM);   // 0–4095
+  return map(raw, 0, 4095, 40, 200);
+}
+
 // ── Poll buttons (non-blocking debounce) ──────────────────────
 void pollButtons() {
   unsigned long now = millis();
@@ -178,6 +201,15 @@ void pollButtons() {
     Serial.println("[BTN]SEL");
   }
   prevBtnSel = sel;
+
+  // Button BPMNAV — cycle sensor yang dipilih untuk BPM
+  bool bpmNav = digitalRead(BTN_BPMNAV);
+  if (prevBtnBpmNav == HIGH && bpmNav == LOW && now - lastBpmNavTime > DEBOUNCE_MS) {
+    lastBpmNavTime = now;
+    bpmSel = (bpmSel + 1) % NUM_SENSORS;
+    Serial.printf("[BPMSEL]%d\n", bpmSel);  // maklum balik segera
+  }
+  prevBtnBpmNav = bpmNav;
 }
 
 // ── Serial command handler ─────────────────────────────────────
@@ -295,6 +327,12 @@ void loop() {
     }
   }
 
-  // 4. Cek command dari Serial
+  // 4. Hantar [BPMCTRL] setiap 100ms
+  if (now - lastBpmSendTime >= BPM_SEND_INTERVAL_MS) {
+    lastBpmSendTime = now;
+    Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, readBpm());
+  }
+
+  // 5. Cek command dari Serial
   handleCommand();
 }

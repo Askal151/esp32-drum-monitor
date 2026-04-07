@@ -12,7 +12,7 @@
   import {
     portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd,
-    hitEvent, btnEvent,
+    hitEvent, btnEvent, bpmCtrl,
   } from './lib/serial.js';
   import { get } from 'svelte/store';
   import {
@@ -32,6 +32,9 @@
   let hits = [0, 0, 0, 0, 0, 0, 0, 0];
   let bpm  = [0, 0, 0, 0, 0, 0, 0, 0];
   const hitTimes = [[], [], [], [], [], [], [], []];
+
+  // ── BPM override per sensor (dari potensio + button BPMNAV) ──
+  let sensorBpm = new Array(8).fill(120);   // BPM untuk setiap sensor
 
   // ── Per-sensor beat sequencer (BEAT_DATA-driven) ──────────────
   // Setiap sensor memainkan pola beat lengkap (16-step) dari BEAT_DATA
@@ -64,7 +67,7 @@
       const beat = BEAT_DATA[beatId];
       if (!beat) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
 
-      const stepDur = 60 / beat.bpm / 4;  // 16th note
+      const stepDur = 60 / (sensorBpm[idx] ?? beat.bpm) / 4;  // 16th note — BPM dari potensio atau preset
 
       while (_seqNextTime[idx] < ac2.currentTime + SEQ_LOOKAHEAD) {
         const step = _seqStep[idx];
@@ -139,6 +142,12 @@
       }
     }
     if (changed) seqActive = [...seqActive];  // hanya bila ada perubahan
+  });
+
+  // ── BPM control dari potensio + button BPMNAV ────────────────
+  bpmCtrl.subscribe(({ sel, bpm: b }) => {
+    sensorBpm[sel] = b;
+    sensorBpm = [...sensorBpm];
   });
 
   // ── Button fizikal NAV / SEL ───────────────────────────────────
@@ -250,6 +259,13 @@
 
   <!-- SENSOR SELECTOR — 4 butang pilih sensor + sample + beat indicator -->
   <section class="card p-3 flex flex-col gap-2">
+    <!-- BPM control indicator dari potensio + button BPMNAV -->
+    <div class="flex items-center gap-2 px-1">
+      <span class="text-[10px] text-slate-600">🎛 BPM Ctrl:</span>
+      <span class="text-[10px] font-bold" style="color:{CLR[$bpmCtrl.sel]}">{NAMES[$bpmCtrl.sel]}</span>
+      <span class="text-[10px] font-bold text-white">{$bpmCtrl.bpm} BPM</span>
+      <span class="text-[10px] text-slate-700 ml-1">· putar pot / tekan BPMNAV</span>
+    </div>
     <!-- Stop All -->
     {#if seqActive.some(Boolean)}
     <div class="flex items-center gap-3">
@@ -275,7 +291,14 @@
             <div class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
               {NAMES[i]}
             </div>
-            <div class="text-[9px] text-slate-700">{chip}</div>
+            <div class="flex items-center gap-1">
+              {#if $bpmCtrl.sel === i}
+                <span class="text-[9px] font-bold px-1 rounded" style="background:{CLR[i]}22; color:{CLR[i]}">🎛 {$bpmCtrl.bpm}</span>
+              {:else}
+                <span class="text-[9px] text-slate-700">{sensorBpm[i]} BPM</span>
+              {/if}
+              <span class="text-[9px] text-slate-700">{chip}</span>
+            </div>
           </div>
           {#if sample.id}
             <div class="text-xs font-medium truncate" style="color:{sample.color}">{sample.icon} {sample.label}</div>

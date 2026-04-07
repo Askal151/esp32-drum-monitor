@@ -30,6 +30,10 @@ export const hitEvent   = writable({ idx: -1, velocity: 0, ts: 0 });  // trigger
 // ── Button events ──────────────────────────────────────────────
 export const btnEvent = writable({ btn: '', ts: 0 });   // btn: 'NAV' atau 'SEL'
 
+// ── BPM control dari potensio + button BPMNAV ──────────────────
+// sel = sensor yang dipilih (0–7), bpm = nilai potensio (40–200)
+export const bpmCtrl = writable({ sel: 0, bpm: 120 });
+
 export const plotBuf = Array.from({ length: 8 }, () => ({
   adc: new Array(MAX_POINTS).fill(0),
   dev: new Array(MAX_POINTS).fill(0),
@@ -48,10 +52,11 @@ function emitRaw(text, dir = 'rx') {
 
 // ── Regex ───────────────────────────────────────────────────────
 const D = '\\|(-?\\d+)';
-const RX_DATA = new RegExp('HALL8' + D.repeat(24));
-const RX_THR  = /\[THRESH(\d+)\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
-const RX_BASE = /\[(?:AUTO|CAL|INIT)\s*S(\d+)\].*?(\d+)\s*$/;
-const RX_BTN  = /\[BTN\](NAV|SEL)/;
+const RX_DATA    = new RegExp('HALL8' + D.repeat(24));
+const RX_THR     = /\[THRESH(\d+)\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
+const RX_BASE    = /\[(?:AUTO|CAL|INIT)\s*S(\d+)\].*?(\d+)\s*$/;
+const RX_BTN     = /\[BTN\](NAV|SEL)/;
+const RX_BPMCTRL = /\[BPMCTRL\](\d+)\|(\d+)/;
 
 // ── State ───────────────────────────────────────────────────────
 let _port = null, _reader = null, _running = false, _lineBuf = '';
@@ -106,7 +111,9 @@ function parseLine(raw) {
   m = RX_BASE.exec(line);
   if (m) { const idx=+m[1]-1,base=+m[2]; if(idx>=0&&idx<8) sensors.update(a=>{a[idx]={...a[idx],baseline:base};return a;}); return; }
   m = RX_BTN.exec(line);
-  if (m) { btnEvent.set({ btn: m[1], ts: Date.now() }); }
+  if (m) { btnEvent.set({ btn: m[1], ts: Date.now() }); return; }
+  m = RX_BPMCTRL.exec(line);
+  if (m) { bpmCtrl.set({ sel: +m[1], bpm: +m[2] }); }
 }
 
 async function readLoop() {
