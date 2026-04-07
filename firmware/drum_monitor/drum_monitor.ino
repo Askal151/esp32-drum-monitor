@@ -237,6 +237,18 @@ void handleCommand() {
     }
     Serial.printf("[DEBUG] NAV=%d SEL=%d\n",
       digitalRead(BTN_NAV), digitalRead(BTN_SEL));
+  } else if (cmd == "b") {
+    // Test: simulasi tekan button BPMNAV
+    bpmSel = (bpmSel + 1) % NUM_SENSORS;
+    Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, sensorBpmArr[bpmSel]);
+  } else if (cmd.startsWith("p")) {
+    // Test: simulasi putar potensio — p<bpm>, contoh: p150
+    int val = cmd.substring(1).toInt();
+    if (val >= 40 && val <= 200) {
+      sensorBpmArr[bpmSel] = val;
+      potBpmPrev = val;
+      Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, val);
+    }
   } else if (cmd.startsWith("T") && cmd.indexOf('=') > 0) {
     // Format: T<sensor><level>=<val>
     // Sensor 1–9: T11=100 (S1,L1), T81=500 (S8,L1)
