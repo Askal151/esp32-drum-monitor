@@ -52,16 +52,17 @@
 
     _seqTimers[idx] = setInterval(() => {
       const ac2 = isRunning() ? getAudioCtx() : null;
-      if (!ac2) { _stopSensorSeq(idx); return; }
+      // Henti senyap — JANGAN sentuh seqActive dari sini (elak re-render)
+      if (!ac2) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
 
       const beatId = get(sensorSamples)[idx];
-      if (!beatId) { _stopSensorSeq(idx); return; }
+      if (!beatId) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
 
       const s = get(sensors)[idx];
-      if (s.led === 0) { _stopSensorSeq(idx); return; }
+      if (s.led === 0) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
 
       const beat = BEAT_DATA[beatId];
-      if (!beat) { _stopSensorSeq(idx); return; }
+      if (!beat) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
 
       const stepDur = 60 / beat.bpm / 4;  // 16th note
 
@@ -73,7 +74,6 @@
           : 0.7;
 
         if (beat.isWav) {
-          // WAV: mainkan pada setiap downbeat (bar = setiap 4 step)
           if (step % 4 === 0) SAMPLE_FNS[beatId]?.(t, vel);
         } else {
           for (const [instrId, pattern] of Object.entries(beat.tracks)) {
@@ -86,21 +86,19 @@
         _seqNextTime[idx] += stepDur;
       }
     }, SEQ_TICK_MS);
-
-    seqActive[idx] = true;
-    seqActive = [...seqActive];
+    // seqActive dikemas kini oleh sensors.subscribe sahaja
   }
 
   function _stopSensorSeq(idx) {
     clearInterval(_seqTimers[idx]);
     _seqTimers[idx] = null;
     _seqStep[idx]   = 0;
-    seqActive[idx]  = false;
-    seqActive = [...seqActive];
+    // seqActive dikemas kini oleh sensors.subscribe sahaja
   }
 
   function stopAllBeats() {
     for (let i = 0; i < 8; i++) _stopSensorSeq(i);
+    seqActive = [false, false, false, false, false, false, false, false];
   }
 
   // ── Hit → kira hit & BPM sahaja (audio ditangani oleh sequencer) ──
@@ -123,18 +121,24 @@
   });
 
   // ── Sensor LED → mulakan/hentikan beat sequencer ──────────────
+  // seqActive hanya dikemas kini di sini, dan hanya bila nilai berubah
+  // supaya Svelte tidak re-render setiap 20ms
   sensors.subscribe(arr => {
     if (!audioEnabled || !isRunning()) return;
     const ac = getAudioCtx();
     if (ac.state !== 'running') return;
+    let changed = false;
     for (let i = 0; i < 8; i++) {
       const led = arr[i].led;
       if (led > 0 && !_seqTimers[i]) {
         _startSensorSeq(i);
+        if (!seqActive[i]) { seqActive[i] = true; changed = true; }
       } else if (led === 0 && _seqTimers[i]) {
         _stopSensorSeq(i);
+        if (seqActive[i]) { seqActive[i] = false; changed = true; }
       }
     }
+    if (changed) seqActive = [...seqActive];  // hanya bila ada perubahan
   });
 
   // ── Button fizikal NAV / SEL ───────────────────────────────────
