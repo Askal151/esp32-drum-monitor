@@ -95,9 +95,9 @@ unsigned long lastSelTime    = 0;
 unsigned long lastBpmNavTime = 0;
 
 // ── BPM control state ──────────────────────────────────────────
-int           bpmSel         = 0;     // Sensor yang dipilih untuk BPM (0–7)
-int           lastSentBpm    = -1;    // BPM terakhir dihantar (untuk hysteresis)
-int           lastSentSel    = -1;    // Sensor terakhir dihantar
+int           bpmSel                    = 0;   // Sensor yang dipilih untuk BPM (0–7)
+int           sensorBpmArr[NUM_SENSORS];       // BPM tersimpan per sensor
+int           potBpmPrev                = -1;  // Bacaan pot terakhir — detect pergerakan
 
 // ── Timing ────────────────────────────────────────────────────
 unsigned long lastSampleTime = 0;
@@ -134,6 +134,10 @@ void setup() {
 
   calibrateBaseline();
 
+  // Init BPM per sensor (120 BPM default)
+  for (int i = 0; i < NUM_SENSORS; i++) sensorBpmArr[i] = 120;
+  potBpmPrev = readBpm();   // rekod posisi awal pot tanpa update sensorBpmArr
+
   for (int s = 0; s < NUM_SENSORS; s++) {
     Serial.printf("[THRESH%d] %d|%d|%d|%d\n", s+1,
       thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3]);
@@ -143,6 +147,8 @@ void setup() {
     digitalRead(BTN_NAV), digitalRead(BTN_SEL),
     digitalRead(BTN_BPMNAV), analogRead(POT_BPM));
   Serial.println("[READY]");
+  // Hantar state BPM awal supaya frontend tahu BPM sensor 0
+  Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, sensorBpmArr[bpmSel]);
 }
 
 // ── Sort helper untuk median ────────────────────────────────────
@@ -210,7 +216,8 @@ void pollButtons() {
   if (prevBtnBpmNav == HIGH && bpmNav == LOW && now - lastBpmNavTime > DEBOUNCE_MS) {
     lastBpmNavTime = now;
     bpmSel = (bpmSel + 1) % NUM_SENSORS;
-    Serial.printf("[BPMSEL]%d\n", bpmSel);  // maklum balik segera
+    // Hantar BPM tersimpan sensor baru serta-merta — BUKAN posisi potensio
+    Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, sensorBpmArr[bpmSel]);
   }
   prevBtnBpmNav = bpmNav;
 }
@@ -330,14 +337,16 @@ void loop() {
     }
   }
 
-  // 4. Hantar [BPMCTRL] setiap 100ms — bila BPM berubah ≥ 2 ATAU sensor bertukar
+  // 4. Cek pergerakan potensio setiap 100ms
+  //    Hanya update BPM bila pot BERGERAK ≥ 2 BPM dari bacaan sebelum
+  //    Sensor lain TIDAK terjejas — setiap sensor simpan BPM sendiri
   if (now - lastBpmSendTime >= BPM_SEND_INTERVAL_MS) {
     lastBpmSendTime = now;
-    int currentBpm = readBpm();
-    if (abs(currentBpm - lastSentBpm) >= 2 || bpmSel != lastSentSel || lastSentBpm < 0) {
-      lastSentBpm = currentBpm;
-      lastSentSel = bpmSel;
-      Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, currentBpm);
+    int potBpm = readBpm();
+    if (abs(potBpm - potBpmPrev) >= 2) {
+      potBpmPrev = potBpm;
+      sensorBpmArr[bpmSel] = potBpm;  // update hanya sensor yang dipilih
+      Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, potBpm);
     }
   }
 
