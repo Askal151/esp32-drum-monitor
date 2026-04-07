@@ -96,6 +96,8 @@ unsigned long lastBpmNavTime = 0;
 
 // ── BPM control state ──────────────────────────────────────────
 int           bpmSel         = 0;     // Sensor yang dipilih untuk BPM (0–7)
+int           lastSentBpm    = -1;    // BPM terakhir dihantar (untuk hysteresis)
+int           lastSentSel    = -1;    // Sensor terakhir dihantar
 
 // ── Timing ────────────────────────────────────────────────────
 unsigned long lastSampleTime = 0;
@@ -178,10 +180,11 @@ int computeLed(int sIdx, int16_t dev) {
   return 0;
 }
 
-// ── Baca potensio → BPM (40–200) ──────────────────────────────
+// ── Baca potensio → BPM (40–200) dengan averaging untuk kurang noise ─
 int readBpm() {
-  int raw = analogRead(POT_BPM);   // 0–4095
-  return map(raw, 0, 4095, 40, 200);
+  long sum = 0;
+  for (int i = 0; i < 16; i++) sum += analogRead(POT_BPM);
+  return map(sum / 16, 0, 4095, 40, 200);
 }
 
 // ── Poll buttons (non-blocking debounce) ──────────────────────
@@ -327,10 +330,15 @@ void loop() {
     }
   }
 
-  // 4. Hantar [BPMCTRL] setiap 100ms
+  // 4. Hantar [BPMCTRL] setiap 100ms — bila BPM berubah ≥ 2 ATAU sensor bertukar
   if (now - lastBpmSendTime >= BPM_SEND_INTERVAL_MS) {
     lastBpmSendTime = now;
-    Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, readBpm());
+    int currentBpm = readBpm();
+    if (abs(currentBpm - lastSentBpm) >= 2 || bpmSel != lastSentSel || lastSentBpm < 0) {
+      lastSentBpm = currentBpm;
+      lastSentSel = bpmSel;
+      Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, currentBpm);
+    }
   }
 
   // 5. Cek command dari Serial

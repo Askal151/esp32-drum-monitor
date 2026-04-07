@@ -34,7 +34,10 @@
   const hitTimes = [[], [], [], [], [], [], [], []];
 
   // ── BPM override per sensor (dari potensio + button BPMNAV) ──
-  let sensorBpm = new Array(8).fill(120);   // BPM untuk setiap sensor
+  // _sensorBpm: array plain JS (bukan Svelte reactive) — dibaca terus dalam setInterval closure
+  // sensorBpm:  Svelte reactive copy — untuk update template sahaja
+  const _sensorBpm = new Array(8).fill(120);   // dibaca dalam closure
+  let   sensorBpm  = new Array(8).fill(120);   // untuk template display
 
   // ── Per-sensor beat sequencer (BEAT_DATA-driven) ──────────────
   // Setiap sensor memainkan pola beat lengkap (16-step) dari BEAT_DATA
@@ -43,6 +46,7 @@
   const _seqTimers   = new Array(8).fill(null);
   const _seqStep     = new Array(8).fill(0);
   const _seqNextTime = new Array(8).fill(0);
+  const _seqBpm      = new Array(8).fill(120);  // BPM semasa setiap sequencer (untuk detect perubahan)
 
   const SEQ_TICK_MS   = 25;
   const SEQ_LOOKAHEAD = 0.1;  // saat lookahead Web Audio
@@ -67,7 +71,15 @@
       const beat = BEAT_DATA[beatId];
       if (!beat) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
 
-      const stepDur = 60 / (sensorBpm[idx] ?? beat.bpm) / 4;  // 16th note — BPM dari potensio atau preset
+      const activeBpm = _sensorBpm[idx] || beat.bpm;
+
+      // Bila BPM berubah, reset _seqNextTime supaya perubahan tempo berkesan serta-merta
+      if (_seqBpm[idx] !== activeBpm) {
+        _seqBpm[idx] = activeBpm;
+        _seqNextTime[idx] = ac2.currentTime + 0.05;
+      }
+
+      const stepDur = 60 / activeBpm / 4;  // 16th note — BPM dari potensio atau preset
 
       while (_seqNextTime[idx] < ac2.currentTime + SEQ_LOOKAHEAD) {
         const step = _seqStep[idx];
@@ -146,8 +158,8 @@
 
   // ── BPM control dari potensio + button BPMNAV ────────────────
   bpmCtrl.subscribe(({ sel, bpm: b }) => {
-    sensorBpm[sel] = b;
-    sensorBpm = [...sensorBpm];
+    _sensorBpm[sel] = b;          // update array plain JS (dibaca dalam closure)
+    sensorBpm = [..._sensorBpm];  // trigger Svelte re-render untuk template
   });
 
   // ── Button fizikal NAV / SEL ───────────────────────────────────
