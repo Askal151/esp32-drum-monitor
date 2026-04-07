@@ -16,7 +16,7 @@
   } from './lib/serial.js';
   import { get } from 'svelte/store';
   import {
-    SAMPLE_FNS, getSample,
+    SAMPLE_FNS, BEAT_DATA, getSample,
     sensorSamples, selectedSensor,
     saveSample, deleteSample,
     btnNav, btnSel, openPicker,
@@ -33,88 +33,77 @@
   let bpm  = [0, 0, 0, 0, 0, 0, 0, 0];
   const hitTimes = [[], [], [], [], [], [], [], []];
 
-  // ── Beat engine ────────────────────────────────────────────────
-  // Setiap sensor boleh loop sample-nya sebagai beat secara bebas
-  let beatBpm    = 120;
-  let beatActive = [false, false, false, false, false, false, false, false];
-  let beatStep   = 0;   // step semasa (0–15), untuk paparan
+  // ── Per-sensor beat sequencer (BEAT_DATA-driven) ──────────────
+  // Setiap sensor memainkan pola beat lengkap (16-step) dari BEAT_DATA
+  // Sequencer bermula apabila LED > 0, berhenti apabila LED = 0
+  let seqActive = [false, false, false, false, false, false, false, false];
+  const _seqTimers   = new Array(8).fill(null);
+  const _seqStep     = new Array(8).fill(0);
+  const _seqNextTime = new Array(8).fill(0);
 
-  // Pola beat default mengikut jenis sample (16 langkah, 16th notes)
-  const BEAT_PATTERNS = {
-    kick:     [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0],
-    snare:    [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
-    hihat:    [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0],
-    clap:     [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0],
-    rim:      [0,0,1,0, 0,0,1,0, 0,0,1,0, 0,0,1,0],
-    taganing: [1,0,0,1, 0,0,1,0, 1,0,0,1, 0,0,1,0],
-    odap:     [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
-    hesek:    [1,1,1,1, 1,1,1,1, 1,1,1,1, 1,1,1,1],
-    gordang:  [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
-    syn_c3:   [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
-    syn_e3:   [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
-    syn_g3:   [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
-    syn_a3:   [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
-    syn_c4:   [1,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0],
-    has_d4:   [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
-    has_e4:   [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
-    has_g4:   [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
-    has_a4:   [1,0,0,0, 0,0,0,0, 1,0,0,0, 0,0,0,0],
-  };
+  const SEQ_TICK_MS   = 25;
+  const SEQ_LOOKAHEAD = 0.1;  // saat lookahead Web Audio
 
-  // Internal scheduler state
-  let _beatTimer    = null;
-  let _beatRunning  = false;
-  let _beatNextTime = 0;
-  let _beatCurStep  = 0;
-  const STEPS         = 16;
-  const SCHEDULE_AHEAD = 0.1;   // saat lookahead
-  const TICK_MS        = 25;    // interval poll scheduler
+  function _startSensorSeq(idx) {
+    if (_seqTimers[idx]) return;
+    _seqStep[idx] = 0;
+    const ac = getAudioCtx();
+    _seqNextTime[idx] = ac.currentTime + 0.05;
 
-  function _stepDur() { return 60 / beatBpm / 4; }  // durasi 16th note
+    _seqTimers[idx] = setInterval(() => {
+      const ac2 = isRunning() ? getAudioCtx() : null;
+      if (!ac2) { _stopSensorSeq(idx); return; }
 
-  function _scheduleTick() {
-    if (!_beatRunning) return;
-    const ac = isRunning() ? getAudioCtx() : null;
-    if (!ac) return;
-    while (_beatNextTime < ac.currentTime + SCHEDULE_AHEAD) {
-      const ss = get(sensorSamples);
-      for (let i = 0; i < 8; i++) {
-        if (!beatActive[i]) continue;
-        const sid = ss[i];
-        if (!sid) continue;
-        const pat = BEAT_PATTERNS[sid] ?? [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
-        if (pat[_beatCurStep]) {
-          SAMPLE_FNS[sid]?.(_beatNextTime, 0.8);
+      const beatId = get(sensorSamples)[idx];
+      if (!beatId) { _stopSensorSeq(idx); return; }
+
+      const s = get(sensors)[idx];
+      if (s.led === 0) { _stopSensorSeq(idx); return; }
+
+      const beat = BEAT_DATA[beatId];
+      if (!beat) { _stopSensorSeq(idx); return; }
+
+      const stepDur = 60 / beat.bpm / 4;  // 16th note
+
+      while (_seqNextTime[idx] < ac2.currentTime + SEQ_LOOKAHEAD) {
+        const step = _seqStep[idx];
+        const t    = _seqNextTime[idx];
+        const vel  = (s.thresh?.[3] > s.thresh?.[0])
+          ? Math.max(0.3, Math.min(1.0, (Math.abs(s.dev) - s.thresh[0]) / (s.thresh[3] - s.thresh[0])))
+          : 0.7;
+
+        if (beat.isWav) {
+          // WAV: mainkan pada setiap downbeat (bar = setiap 4 step)
+          if (step % 4 === 0) SAMPLE_FNS[beatId]?.(t, vel);
+        } else {
+          for (const [instrId, pattern] of Object.entries(beat.tracks)) {
+            const v = pattern[step];
+            if (v > 0) SAMPLE_FNS[instrId]?.(t, v * vel);
+          }
         }
+
+        _seqStep[idx]     = (step + 1) % 16;
+        _seqNextTime[idx] += stepDur;
       }
-      beatStep = _beatCurStep;
-      _beatCurStep = (_beatCurStep + 1) % STEPS;
-      _beatNextTime += _stepDur();
-    }
+    }, SEQ_TICK_MS);
+
+    seqActive[idx] = true;
+    seqActive = [...seqActive];
   }
 
-  function _startBeatClock() {
-    if (_beatRunning) return;
-    _beatRunning  = true;
-    _beatCurStep  = 0;
-    const ac = isRunning() ? getAudioCtx() : null;
-    _beatNextTime = ac ? ac.currentTime + 0.05 : 0;
-    _beatTimer = setInterval(_scheduleTick, TICK_MS);
-  }
-
-  function _stopBeatClock() {
-    _beatRunning = false;
-    clearInterval(_beatTimer);
-    _beatTimer = null;
-    beatStep = 0;
+  function _stopSensorSeq(idx) {
+    clearInterval(_seqTimers[idx]);
+    _seqTimers[idx] = null;
+    _seqStep[idx]   = 0;
+    seqActive[idx]  = false;
+    seqActive = [...seqActive];
   }
 
   function stopAllBeats() {
-    beatActive = [false, false, false, false, false, false, false, false];
-    _stopBeatClock();
+    for (let i = 0; i < 8; i++) _stopSensorSeq(i);
   }
 
-  // ── Hit → kira hit & BPM sahaja (audio ditangani oleh loop bawah) ──
+  // ── Hit → kira hit & BPM sahaja (audio ditangani oleh sequencer) ──
   hitEvent.subscribe(e => {
     if (e.idx < 0 || !e.ts) return;
     const sampleId = get(sensorSamples)[e.idx];
@@ -133,62 +122,17 @@
     }
   });
 
-  // ── Sustained loop: mainkan sample terus-menerus selagi LED > 0 ──
-  // LOOP_MS disesuaikan dengan decay semulajadi setiap sample
-  // supaya nodes tidak bertindih (punca crash sebelum ini)
-  const LOOP_MS_MAP = {
-    // Western
-    kick:       600,  snare:      300,  hihat:      180,
-    clap:       250,  rim:        180,  tom:        500,
-    cymbal:     1700, tambourine: 220,  cowbell:    900,
-    // Nusantara
-    taganing:   650,  odap:       380,  hesek:      220,
-    gordang:    950,  kendang:    600,  rebana:     300,
-    bedug:      1500,
-    // Latin
-    conga:      400,  bongo:      320,
-    // Electronic
-    kick808:    950,  esnare:     280,
-    // Synth
-    syn_c3:     350,  syn_e3:     350,  syn_g3:     350,
-    syn_a3:     350,  syn_c4:     350,
-    // Hasapi
-    has_d4:    2200,  has_e4:    2200,  has_g4:    2200,  has_a4:   2200,
-    // WAV — gunakan DEFAULT_LOOP_MS (tidak tahu durasi)
-    percusion1: 1000,
-  };
-  const DEFAULT_LOOP_MS = 400;
-  const _loopTimers = new Array(8).fill(null);
-
+  // ── Sensor LED → mulakan/hentikan beat sequencer ──────────────
   sensors.subscribe(arr => {
     if (!audioEnabled || !isRunning()) return;
     const ac = getAudioCtx();
-    if (ac.state !== 'running') return;   // elak jika AudioContext suspended
+    if (ac.state !== 'running') return;
     for (let i = 0; i < 8; i++) {
       const led = arr[i].led;
-      if (led > 0 && !_loopTimers[i]) {
-        const playOnce = () => {
-          const sampleId = get(sensorSamples)[i];
-          if (!sampleId || !isRunning()) {
-            clearInterval(_loopTimers[i]); _loopTimers[i] = null; return;
-          }
-          const s = get(sensors)[i];
-          // Semak semula LED — hentikan jika magnet sudah diangkat
-          if (s.led === 0) {
-            clearInterval(_loopTimers[i]); _loopTimers[i] = null; return;
-          }
-          const vel = Math.max(0.15, Math.min(1.0,
-            (Math.abs(s.dev) - s.thresh[0]) / (s.thresh[3] - s.thresh[0])
-          ));
-          SAMPLE_FNS[sampleId]?.(ac.currentTime, vel);
-        };
-        const sampleId = get(sensorSamples)[i];
-        const loopMs = LOOP_MS_MAP[sampleId] ?? DEFAULT_LOOP_MS;
-        playOnce();
-        _loopTimers[i] = setInterval(playOnce, loopMs);
-      } else if (led === 0 && _loopTimers[i]) {
-        clearInterval(_loopTimers[i]);
-        _loopTimers[i] = null;
+      if (led > 0 && !_seqTimers[i]) {
+        _startSensorSeq(i);
+      } else if (led === 0 && _seqTimers[i]) {
+        _stopSensorSeq(i);
       }
     }
   });
@@ -302,23 +246,20 @@
 
   <!-- SENSOR SELECTOR — 4 butang pilih sensor + sample + beat indicator -->
   <section class="card p-3 flex flex-col gap-2">
-    <!-- BPM + Stop All -->
+    <!-- Stop All -->
+    {#if seqActive.some(Boolean)}
     <div class="flex items-center gap-3">
-      <span class="text-xs text-slate-500 shrink-0">BPM</span>
-      <input type="range" min="60" max="200" step="1" bind:value={beatBpm}
-        class="flex-1 accent-cyan-500 h-1" />
-      <span class="text-xs font-mono font-bold text-cyan-400 w-8 text-right">{beatBpm}</span>
-      {#if beatActive.some(Boolean)}
-        <button
-          class="text-xs px-3 py-1 rounded-lg bg-red-950 text-red-400 border border-red-900 hover:bg-red-900 transition-colors shrink-0"
-          on:click={stopAllBeats}>■ Stop</button>
-      {/if}
+      <span class="text-xs text-slate-500 flex-1">Beat sequencer aktif — magnet rapat untuk mainkan</span>
+      <button
+        class="text-xs px-3 py-1 rounded-lg bg-red-950 text-red-400 border border-red-900 hover:bg-red-900 transition-colors shrink-0"
+        on:click={stopAllBeats}>■ Stop Semua</button>
     </div>
+    {/if}
     <!-- 8 sensor butang — 2 baris, 4 per baris -->
     <div class="grid grid-cols-4 gap-2">
       {#each $sensors as s, i}
         {@const sample = getSample($sensorSamples[i])}
-        {@const looping = beatActive[i]}
+        {@const looping = seqActive[i]}
         {@const chip = i < 4 ? 'ADS1015' : 'ADS1115'}
         <button
           class="rounded-xl border-2 p-2 text-left transition-all duration-200 flex flex-col gap-1"
