@@ -137,12 +137,25 @@
   // LOOP_MS disesuaikan dengan decay semulajadi setiap sample
   // supaya nodes tidak bertindih (punca crash sebelum ini)
   const LOOP_MS_MAP = {
-    kick:     600,   snare:    300,  hihat:    180,
-    clap:     250,   rim:      180,  taganing: 650,
-    odap:     380,   hesek:    220,  gordang:  950,
-    syn_c3:   350,   syn_e3:   350,  syn_g3:   350,
-    syn_a3:   350,   syn_c4:   350,
-    has_d4:   2200,  has_e4:   2200, has_g4:   2200, has_a4:   2200,
+    // Western
+    kick:       600,  snare:      300,  hihat:      180,
+    clap:       250,  rim:        180,  tom:        500,
+    cymbal:     1700, tambourine: 220,  cowbell:    900,
+    // Nusantara
+    taganing:   650,  odap:       380,  hesek:      220,
+    gordang:    950,  kendang:    600,  rebana:     300,
+    bedug:      1500,
+    // Latin
+    conga:      400,  bongo:      320,
+    // Electronic
+    kick808:    950,  esnare:     280,
+    // Synth
+    syn_c3:     350,  syn_e3:     350,  syn_g3:     350,
+    syn_a3:     350,  syn_c4:     350,
+    // Hasapi
+    has_d4:    2200,  has_e4:    2200,  has_g4:    2200,  has_a4:   2200,
+    // WAV — gunakan DEFAULT_LOOP_MS (tidak tahu durasi)
+    percusion1: 1000,
   };
   const DEFAULT_LOOP_MS = 400;
   const _loopTimers = new Array(8).fill(null);

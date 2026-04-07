@@ -19,51 +19,97 @@ export const EMPTY_SAMPLE = { id: null, label: '— Kosong —', group: '', icon
 
 import {
   scheduleKick, scheduleSnare, scheduleHihat, scheduleClap, scheduleRim,
+  scheduleTom, scheduleCymbal, scheduleTambourine, scheduleCowbell,
   scheduleTaganing, scheduleOdap, scheduleHesek, scheduleGordang,
+  scheduleKendang, scheduleRebana, scheduleBedug,
+  scheduleConga, scheduleBongo,
+  scheduleKick808, scheduleElecSnare,
   scheduleSynth, scheduleHasapi,
+  scheduleWav,
 } from './audio.js';
 
-// ── Daftar sample ───────────────────────────────────────────────
+// Path base untuk WAV (sesuai dengan vite base path)
+const WAV_BASE = '/esp32-drum-monitor/samples';
+
+// ── Daftar 21 sample beat — semua genre ─────────────────────────
 export const SAMPLES = [
-  { id: 'kick',     label: 'Kick',     group: 'Western', icon: '🥁', color: '#22d3ee' },
-  { id: 'snare',    label: 'Snare',    group: 'Western', icon: '🥁', color: '#4ade80' },
-  { id: 'hihat',    label: 'Hi-Hat',   group: 'Western', icon: '🥁', color: '#fbbf24' },
-  { id: 'clap',     label: 'Clap',     group: 'Western', icon: '🥁', color: '#f97316' },
-  { id: 'rim',      label: 'Rim',      group: 'Western', icon: '🥁', color: '#a855f7' },
-  { id: 'taganing', label: 'Taganing', group: 'Batak',   icon: '🪘', color: '#f59e0b' },
-  { id: 'odap',     label: 'Odap',     group: 'Batak',   icon: '🪘', color: '#22d3ee' },
-  { id: 'hesek',    label: 'Hesek',    group: 'Batak',   icon: '🪘', color: '#a855f7' },
-  { id: 'gordang',  label: 'Gordang',  group: 'Batak',   icon: '🪘', color: '#ef4444' },
-  { id: 'syn_c3',   label: 'C3',       group: 'Synth',   icon: '🎹', color: '#8b5cf6' },
-  { id: 'syn_e3',   label: 'E3',       group: 'Synth',   icon: '🎹', color: '#8b5cf6' },
-  { id: 'syn_g3',   label: 'G3',       group: 'Synth',   icon: '🎹', color: '#8b5cf6' },
-  { id: 'syn_a3',   label: 'A3',       group: 'Synth',   icon: '🎹', color: '#8b5cf6' },
-  { id: 'syn_c4',   label: 'C4',       group: 'Synth',   icon: '🎹', color: '#8b5cf6' },
-  { id: 'has_d4',   label: 'DO (D4)',  group: 'Hasapi',  icon: '🎸', color: '#f472b6' },
-  { id: 'has_e4',   label: 'MI (E4)',  group: 'Hasapi',  icon: '🎸', color: '#f472b6' },
-  { id: 'has_g4',   label: 'SOL (G4)', group: 'Hasapi',  icon: '🎸', color: '#f472b6' },
-  { id: 'has_a4',   label: 'LA (A4)',  group: 'Hasapi',  icon: '🎸', color: '#f472b6' },
+  // ── Western (9) ──────────────────────────────────────────────
+  { id: 'kick',        label: 'Kick',        group: 'Western',    icon: '🥁', color: '#22d3ee' },
+  { id: 'snare',       label: 'Snare',       group: 'Western',    icon: '🥁', color: '#4ade80' },
+  { id: 'hihat',       label: 'Hi-Hat',      group: 'Western',    icon: '🥁', color: '#fbbf24' },
+  { id: 'clap',        label: 'Clap',        group: 'Western',    icon: '🥁', color: '#f97316' },
+  { id: 'rim',         label: 'Rim Shot',    group: 'Western',    icon: '🥁', color: '#a855f7' },
+  { id: 'tom',         label: 'Floor Tom',   group: 'Western',    icon: '🥁', color: '#06b6d4' },
+  { id: 'cymbal',      label: 'Cymbal',      group: 'Western',    icon: '🥁', color: '#e2e8f0' },
+  { id: 'tambourine',  label: 'Tambourine',  group: 'Western',    icon: '🥁', color: '#fb7185' },
+  { id: 'cowbell',     label: 'Cowbell',     group: 'Western',    icon: '🥁', color: '#fcd34d' },
+  // ── Nusantara (7) ────────────────────────────────────────────
+  { id: 'taganing',    label: 'Taganing',    group: 'Nusantara',  icon: '🪘', color: '#f59e0b' },
+  { id: 'odap',        label: 'Odap',        group: 'Nusantara',  icon: '🪘', color: '#22d3ee' },
+  { id: 'hesek',       label: 'Hesek',       group: 'Nusantara',  icon: '🪘', color: '#a855f7' },
+  { id: 'gordang',     label: 'Gordang',     group: 'Nusantara',  icon: '🪘', color: '#ef4444' },
+  { id: 'kendang',     label: 'Kendang',     group: 'Nusantara',  icon: '🪘', color: '#10b981' },
+  { id: 'rebana',      label: 'Rebana',      group: 'Nusantara',  icon: '🪘', color: '#f472b6' },
+  { id: 'bedug',       label: 'Bedug',       group: 'Nusantara',  icon: '🪘', color: '#78716c' },
+  // ── Latin (2) ────────────────────────────────────────────────
+  { id: 'conga',       label: 'Conga',       group: 'Latin',      icon: '🥁', color: '#fb923c' },
+  { id: 'bongo',       label: 'Bongo',       group: 'Latin',      icon: '🥁', color: '#facc15' },
+  // ── Electronic (2) ───────────────────────────────────────────
+  { id: 'kick808',     label: '808 Kick',    group: 'Electronic', icon: '🔊', color: '#7c3aed' },
+  { id: 'esnare',      label: 'Elec Snare',  group: 'Electronic', icon: '🔊', color: '#06b6d4' },
+  // ── Synth Nada (5) ───────────────────────────────────────────
+  { id: 'syn_c3',      label: 'C3',          group: 'Synth',      icon: '🎹', color: '#8b5cf6' },
+  { id: 'syn_e3',      label: 'E3',          group: 'Synth',      icon: '🎹', color: '#8b5cf6' },
+  { id: 'syn_g3',      label: 'G3',          group: 'Synth',      icon: '🎹', color: '#8b5cf6' },
+  { id: 'syn_a3',      label: 'A3',          group: 'Synth',      icon: '🎹', color: '#8b5cf6' },
+  { id: 'syn_c4',      label: 'C4',          group: 'Synth',      icon: '🎹', color: '#8b5cf6' },
+  // ── Hasapi (4) ───────────────────────────────────────────────
+  { id: 'has_d4',      label: 'DO (D4)',     group: 'Hasapi',     icon: '🎸', color: '#f472b6' },
+  { id: 'has_e4',      label: 'MI (E4)',     group: 'Hasapi',     icon: '🎸', color: '#f472b6' },
+  { id: 'has_g4',      label: 'SOL (G4)',    group: 'Hasapi',     icon: '🎸', color: '#f472b6' },
+  { id: 'has_a4',      label: 'LA (A4)',     group: 'Hasapi',     icon: '🎸', color: '#f472b6' },
+  // ── WAV File (1) ─────────────────────────────────────────────
+  { id: 'percusion1',  label: 'Percusion 123', group: 'WAV',     icon: '🎵', color: '#34d399' },
 ];
 
 export const SAMPLE_FNS = {
-  kick:     (t, v) => scheduleKick(t, v),
-  snare:    (t, v) => scheduleSnare(t, v),
-  hihat:    (t, v) => scheduleHihat(t, v, false),
-  clap:     (t, v) => scheduleClap(t, v),
-  rim:      (t, v) => scheduleRim(t, v),
-  taganing: (t, v) => scheduleTaganing(t, v),
-  odap:     (t, v) => scheduleOdap(t, v),
-  hesek:    (t, v) => scheduleHesek(t, v),
-  gordang:  (t, v) => scheduleGordang(t, v),
-  syn_c3:   (t, v) => scheduleSynth(130.81, t, v),
-  syn_e3:   (t, v) => scheduleSynth(164.81, t, v),
-  syn_g3:   (t, v) => scheduleSynth(196.00, t, v),
-  syn_a3:   (t, v) => scheduleSynth(220.00, t, v),
-  syn_c4:   (t, v) => scheduleSynth(261.63, t, v),
-  has_d4:   (t, v) => scheduleHasapi(293.66, t, v),
-  has_e4:   (t, v) => scheduleHasapi(329.63, t, v),
-  has_g4:   (t, v) => scheduleHasapi(392.00, t, v),
-  has_a4:   (t, v) => scheduleHasapi(440.00, t, v),
+  // Western
+  kick:        (t, v) => scheduleKick(t, v),
+  snare:       (t, v) => scheduleSnare(t, v),
+  hihat:       (t, v) => scheduleHihat(t, v, false),
+  clap:        (t, v) => scheduleClap(t, v),
+  rim:         (t, v) => scheduleRim(t, v),
+  tom:         (t, v) => scheduleTom(t, v),
+  cymbal:      (t, v) => scheduleCymbal(t, v),
+  tambourine:  (t, v) => scheduleTambourine(t, v),
+  cowbell:     (t, v) => scheduleCowbell(t, v),
+  // Nusantara
+  taganing:    (t, v) => scheduleTaganing(t, v),
+  odap:        (t, v) => scheduleOdap(t, v),
+  hesek:       (t, v) => scheduleHesek(t, v),
+  gordang:     (t, v) => scheduleGordang(t, v),
+  kendang:     (t, v) => scheduleKendang(t, v),
+  rebana:      (t, v) => scheduleRebana(t, v),
+  bedug:       (t, v) => scheduleBedug(t, v),
+  // Latin
+  conga:       (t, v) => scheduleConga(t, v),
+  bongo:       (t, v) => scheduleBongo(t, v),
+  // Electronic
+  kick808:     (t, v) => scheduleKick808(t, v),
+  esnare:      (t, v) => scheduleElecSnare(t, v),
+  // Synth
+  syn_c3:      (t, v) => scheduleSynth(130.81, t, v),
+  syn_e3:      (t, v) => scheduleSynth(164.81, t, v),
+  syn_g3:      (t, v) => scheduleSynth(196.00, t, v),
+  syn_a3:      (t, v) => scheduleSynth(220.00, t, v),
+  syn_c4:      (t, v) => scheduleSynth(261.63, t, v),
+  // Hasapi
+  has_d4:      (t, v) => scheduleHasapi(293.66, t, v),
+  has_e4:      (t, v) => scheduleHasapi(329.63, t, v),
+  has_g4:      (t, v) => scheduleHasapi(392.00, t, v),
+  has_a4:      (t, v) => scheduleHasapi(440.00, t, v),
+  // WAV
+  percusion1:  (t, v) => scheduleWav(`${WAV_BASE}/percusion123.wav`, t, v),
 };
 
 // ── Persistence ─────────────────────────────────────────────────

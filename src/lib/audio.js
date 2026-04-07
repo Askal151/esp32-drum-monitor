@@ -912,3 +912,350 @@ function makeDistCurve(amount) {
   }
   return curve;
 }
+
+// ════════════════════════════════════════════════════════════════
+// BEAT SAMPLES — 20 genre (Western, Nusantara, Latin, Electronic)
+// ════════════════════════════════════════════════════════════════
+
+// ── Tom (Floor Tom) ───────────────────────────────────────────
+export function scheduleTom(time, velocity = 1.0) {
+  const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
+  const master = ac.createGain(); master.connect(ac.destination);
+  const osc = ac.createOscillator(); osc.type = 'sine';
+  osc.frequency.setValueAtTime(180, time);
+  osc.frequency.exponentialRampToValueAtTime(75, time + 0.25);
+  const env = ac.createGain();
+  env.gain.setValueAtTime(vel * 0.85, time);
+  env.gain.exponentialRampToValueAtTime(0.001, time + 0.45);
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 300;
+  osc.connect(lp); lp.connect(env); env.connect(master);
+  // Click transient
+  const click = ac.createOscillator(); click.type = 'triangle';
+  click.frequency.setValueAtTime(600, time);
+  click.frequency.exponentialRampToValueAtTime(200, time + 0.015);
+  const cg = ac.createGain();
+  cg.gain.setValueAtTime(vel * 0.4, time);
+  cg.gain.exponentialRampToValueAtTime(0.001, time + 0.018);
+  click.connect(cg); cg.connect(master);
+  osc.start(time); osc.stop(time + 0.5);
+  click.start(time); click.stop(time + 0.02);
+  schedCleanup([osc, lp, env, click, cg, master], 0.55);
+}
+
+// ── Cymbal / Crash ─────────────────────────────────────────────
+export function scheduleCymbal(time, velocity = 0.7) {
+  const ac = getCtx(), vel = Math.max(0.05, Math.min(1.0, velocity));
+  const freqs = [285, 318, 399, 514, 646, 1000, 1400, 1800];
+  const master = ac.createGain();
+  master.gain.setValueAtTime(vel * 0.5, time);
+  master.gain.exponentialRampToValueAtTime(0.001, time + 1.6);
+  master.connect(ac.destination);
+  const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 5000;
+  const nodes = [master, hp];
+  for (const f of freqs) {
+    const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = f;
+    o.connect(hp); hp.connect(master);
+    o.start(time); o.stop(time + 1.65);
+    nodes.push(o);
+  }
+  const noise = ac.createBufferSource();
+  noise.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.5));
+  const nhp = ac.createBiquadFilter(); nhp.type = 'highpass'; nhp.frequency.value = 8000;
+  const ng = ac.createGain();
+  ng.gain.setValueAtTime(vel * 0.3, time);
+  ng.gain.exponentialRampToValueAtTime(0.001, time + 0.8);
+  noise.connect(nhp); nhp.connect(ng); ng.connect(master);
+  noise.start(time); noise.stop(time + 0.85);
+  nodes.push(noise, nhp, ng);
+  schedCleanup(nodes, 1.7);
+}
+
+// ── Tambourine ─────────────────────────────────────────────────
+export function scheduleTambourine(time, velocity = 0.6) {
+  const ac = getCtx(), vel = Math.max(0.05, Math.min(1.0, velocity));
+  const master = ac.createGain(); master.connect(ac.destination);
+  const nodes = [master];
+  // Jingle metalik: beberapa osc tinggi + noise pendek
+  for (let i = 0; i < 4; i++) {
+    const t = time + i * 0.008;
+    const o = ac.createOscillator(); o.type = 'sine';
+    o.frequency.value = 4800 + i * 700;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(vel * 0.18, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    g.connect(master); o.connect(g);
+    o.start(t); o.stop(t + 0.13);
+    nodes.push(o, g);
+  }
+  const noise = ac.createBufferSource();
+  noise.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.05));
+  const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 6000;
+  const ng = ac.createGain();
+  ng.gain.setValueAtTime(vel * 0.35, time);
+  ng.gain.exponentialRampToValueAtTime(0.001, time + 0.06);
+  noise.connect(hp); hp.connect(ng); ng.connect(master);
+  noise.start(time); noise.stop(time + 0.065);
+  nodes.push(noise, hp, ng);
+  schedCleanup(nodes, 0.2);
+}
+
+// ── Cowbell ────────────────────────────────────────────────────
+export function scheduleCowbell(time, velocity = 0.7) {
+  const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
+  const master = ac.createGain(); master.connect(ac.destination);
+  const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 800; bp.Q.value = 1.2;
+  const env = ac.createGain();
+  env.gain.setValueAtTime(vel * 0.7, time);
+  env.gain.exponentialRampToValueAtTime(0.001, time + 0.85);
+  bp.connect(env); env.connect(master);
+  const o1 = ac.createOscillator(); o1.type = 'square'; o1.frequency.value = 562;
+  const o2 = ac.createOscillator(); o2.type = 'square'; o2.frequency.value = 845;
+  o1.connect(bp); o2.connect(bp);
+  o1.start(time); o1.stop(time + 0.9);
+  o2.start(time); o2.stop(time + 0.9);
+  schedCleanup([o1, o2, bp, env, master], 0.95);
+}
+
+// ── Kendang (Jawa/Sunda) ───────────────────────────────────────
+// Dua karakter: "tak" (kering, tinggi) + "dung" (dalam, panjang)
+export function scheduleKendang(time, velocity = 1.0) {
+  const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
+  const master = ac.createGain(); master.connect(ac.destination);
+  // Dung — badan rendah
+  const dung = ac.createOscillator(); dung.type = 'sine';
+  dung.frequency.setValueAtTime(140, time);
+  dung.frequency.exponentialRampToValueAtTime(65, time + 0.35);
+  const dg = ac.createGain();
+  dg.gain.setValueAtTime(vel * 0.75, time);
+  dg.gain.exponentialRampToValueAtTime(0.001, time + 0.55);
+  dung.connect(dg); dg.connect(master);
+  // Tak — pukulan tangan depan, kering
+  const tak = ac.createOscillator(); tak.type = 'triangle';
+  tak.frequency.setValueAtTime(520, time);
+  tak.frequency.exponentialRampToValueAtTime(280, time + 0.02);
+  const tg = ac.createGain();
+  tg.gain.setValueAtTime(vel * 0.5, time);
+  tg.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
+  const tlp = ac.createBiquadFilter(); tlp.type = 'lowpass'; tlp.frequency.value = 800;
+  tak.connect(tlp); tlp.connect(tg); tg.connect(master);
+  // Kulit noise
+  const noise = ac.createBufferSource();
+  noise.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.04));
+  const nbp = ac.createBiquadFilter(); nbp.type = 'bandpass'; nbp.frequency.value = 1200; nbp.Q.value = 1.5;
+  const ng = ac.createGain();
+  ng.gain.setValueAtTime(vel * 0.25, time);
+  ng.gain.exponentialRampToValueAtTime(0.001, time + 0.045);
+  noise.connect(nbp); nbp.connect(ng); ng.connect(master);
+  noise.start(time); noise.stop(time + 0.05);
+  dung.start(time); dung.stop(time + 0.6);
+  tak.start(time);  tak.stop(time + 0.035);
+  schedCleanup([dung, dg, tak, tlp, tg, noise, nbp, ng, master], 0.65);
+}
+
+// ── Rebana (Melayu/Nusantara) ──────────────────────────────────
+// Frame drum dengan kepingan logam, bunyi "tak" kering + jingle
+export function scheduleRebana(time, velocity = 0.9) {
+  const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
+  const master = ac.createGain(); master.connect(ac.destination);
+  // Badan drum
+  const body = ac.createOscillator(); body.type = 'sine';
+  body.frequency.setValueAtTime(220, time);
+  body.frequency.exponentialRampToValueAtTime(110, time + 0.12);
+  const bg = ac.createGain();
+  bg.gain.setValueAtTime(vel * 0.6, time);
+  bg.gain.exponentialRampToValueAtTime(0.001, time + 0.22);
+  body.connect(bg); bg.connect(master);
+  // Jingle logam
+  for (let i = 0; i < 3; i++) {
+    const o = ac.createOscillator(); o.type = 'sine';
+    o.frequency.value = 3500 + i * 800;
+    const g = ac.createGain();
+    g.gain.setValueAtTime(vel * 0.12, time + i * 0.005);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.08 + i * 0.02);
+    g.connect(master); o.connect(g);
+    o.start(time); o.stop(time + 0.1);
+  }
+  // Pukulan noise
+  const noise = ac.createBufferSource();
+  noise.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.03));
+  const nhp = ac.createBiquadFilter(); nhp.type = 'highpass'; nhp.frequency.value = 2000;
+  const ng = ac.createGain();
+  ng.gain.setValueAtTime(vel * 0.3, time);
+  ng.gain.exponentialRampToValueAtTime(0.001, time + 0.035);
+  noise.connect(nhp); nhp.connect(ng); ng.connect(master);
+  noise.start(time); noise.stop(time + 0.04);
+  body.start(time); body.stop(time + 0.25);
+  schedCleanup([body, bg, noise, nhp, ng, master], 0.3);
+}
+
+// ── Bedug (Gendang Besar Masjid/Pesantren) ─────────────────────
+// Bunyi booming dalam, lebih bulat dan panjang dari gordang
+export function scheduleBedug(time, velocity = 1.0) {
+  const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
+  const { comp } = getSynthChain(ac);
+  const master = ac.createGain(); master.connect(comp);
+  // Sub boom panjang
+  const sub = ac.createOscillator(); sub.type = 'sine';
+  sub.frequency.setValueAtTime(65, time);
+  sub.frequency.exponentialRampToValueAtTime(38, time + 0.8);
+  const sg = ac.createGain();
+  sg.gain.setValueAtTime(vel * 1.0, time);
+  sg.gain.exponentialRampToValueAtTime(0.001, time + 1.4);
+  const slp = ac.createBiquadFilter(); slp.type = 'lowpass'; slp.frequency.value = 120;
+  sub.connect(slp); slp.connect(sg); sg.connect(master);
+  // Second harmonic warm
+  const body = ac.createOscillator(); body.type = 'sine';
+  body.frequency.setValueAtTime(130, time);
+  body.frequency.exponentialRampToValueAtTime(80, time + 0.4);
+  const bg = ac.createGain();
+  bg.gain.setValueAtTime(vel * 0.4, time);
+  bg.gain.exponentialRampToValueAtTime(0.001, time + 0.7);
+  body.connect(bg); bg.connect(master);
+  // Pukulan kayu
+  const punch = ac.createOscillator(); punch.type = 'triangle';
+  punch.frequency.setValueAtTime(180, time);
+  punch.frequency.exponentialRampToValueAtTime(50, time + 0.05);
+  const pg = ac.createGain();
+  pg.gain.setValueAtTime(vel * 0.6, time);
+  pg.gain.exponentialRampToValueAtTime(0.001, time + 0.07);
+  punch.connect(pg); pg.connect(master);
+  sub.start(time);   sub.stop(time + 1.45);
+  body.start(time);  body.stop(time + 0.75);
+  punch.start(time); punch.stop(time + 0.08);
+  schedCleanup([sub, slp, sg, body, bg, punch, pg, master], 1.5);
+}
+
+// ── Conga (Latin) ──────────────────────────────────────────────
+export function scheduleConga(time, velocity = 0.9) {
+  const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
+  const master = ac.createGain(); master.connect(ac.destination);
+  const osc = ac.createOscillator(); osc.type = 'sine';
+  osc.frequency.setValueAtTime(320, time);
+  osc.frequency.exponentialRampToValueAtTime(180, time + 0.18);
+  const env = ac.createGain();
+  env.gain.setValueAtTime(vel * 0.8, time);
+  env.gain.exponentialRampToValueAtTime(0.001, time + 0.35);
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 500;
+  osc.connect(lp); lp.connect(env); env.connect(master);
+  // Slap transient
+  const slap = ac.createOscillator(); slap.type = 'square';
+  slap.frequency.setValueAtTime(800, time);
+  slap.frequency.exponentialRampToValueAtTime(350, time + 0.018);
+  const sg = ac.createGain();
+  sg.gain.setValueAtTime(vel * 0.35, time);
+  sg.gain.exponentialRampToValueAtTime(0.001, time + 0.022);
+  const sbp = ac.createBiquadFilter(); sbp.type = 'bandpass'; sbp.frequency.value = 600; sbp.Q.value = 1.0;
+  slap.connect(sbp); sbp.connect(sg); sg.connect(master);
+  osc.start(time);  osc.stop(time + 0.4);
+  slap.start(time); slap.stop(time + 0.025);
+  schedCleanup([osc, lp, env, slap, sbp, sg, master], 0.45);
+}
+
+// ── Bongo (Latin) ──────────────────────────────────────────────
+export function scheduleBongo(time, velocity = 0.8) {
+  const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
+  const master = ac.createGain(); master.connect(ac.destination);
+  // High bongo
+  const hi = ac.createOscillator(); hi.type = 'sine';
+  hi.frequency.setValueAtTime(480, time);
+  hi.frequency.exponentialRampToValueAtTime(320, time + 0.08);
+  const hg = ac.createGain();
+  hg.gain.setValueAtTime(vel * 0.7, time);
+  hg.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+  hi.connect(hg); hg.connect(master);
+  // Low bongo (slight offset)
+  const lo = ac.createOscillator(); lo.type = 'sine';
+  lo.frequency.setValueAtTime(310, time + 0.005);
+  lo.frequency.exponentialRampToValueAtTime(210, time + 0.12);
+  const lg = ac.createGain();
+  lg.gain.setValueAtTime(vel * 0.55, time + 0.005);
+  lg.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
+  lo.connect(lg); lg.connect(master);
+  hi.start(time);        hi.stop(time + 0.2);
+  lo.start(time + 0.005); lo.stop(time + 0.28);
+  schedCleanup([hi, hg, lo, lg, master], 0.35);
+}
+
+// ── 808 Kick (Electronic) ──────────────────────────────────────
+export function scheduleKick808(time, velocity = 1.0) {
+  const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
+  const { comp } = getSynthChain(ac);
+  const master = ac.createGain(); master.connect(comp);
+  const dist = ac.createWaveShaper(); dist.curve = makeDistCurve(120);
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 160;
+  master.connect(dist); dist.connect(lp); lp.connect(comp);
+  // 808 sub — pitch sweep sangat panjang
+  const osc = ac.createOscillator(); osc.type = 'sine';
+  osc.frequency.setValueAtTime(200, time);
+  osc.frequency.exponentialRampToValueAtTime(32, time + 0.7);
+  const env = ac.createGain();
+  env.gain.setValueAtTime(vel * 1.0, time);
+  env.gain.exponentialRampToValueAtTime(0.001, time + 0.9);
+  osc.connect(env); env.connect(master);
+  // Click transient keras
+  const click = ac.createOscillator(); click.type = 'square';
+  click.frequency.setValueAtTime(1200, time);
+  click.frequency.exponentialRampToValueAtTime(80, time + 0.025);
+  const cg = ac.createGain();
+  cg.gain.setValueAtTime(vel * 0.4, time);
+  cg.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
+  click.connect(cg); cg.connect(master);
+  osc.start(time);   osc.stop(time + 0.95);
+  click.start(time); click.stop(time + 0.032);
+  schedCleanup([osc, env, click, cg, dist, lp, master], 1.0);
+}
+
+// ── Electronic Snare (808 Snare) ───────────────────────────────
+export function scheduleElecSnare(time, velocity = 1.0) {
+  const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
+  const master = ac.createGain(); master.connect(ac.destination);
+  // Noise burst elektronik
+  const noise = ac.createBufferSource();
+  noise.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.3));
+  const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1500;
+  const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3500; bp.Q.value = 0.6;
+  const ng = ac.createGain();
+  ng.gain.setValueAtTime(vel * 0.8, time);
+  ng.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
+  noise.connect(hp); hp.connect(bp); bp.connect(ng); ng.connect(master);
+  // Tone elektronik (pitch flat, bukan sweep seperti acoustic snare)
+  const body = ac.createOscillator(); body.type = 'triangle';
+  body.frequency.value = 220;
+  const bg = ac.createGain();
+  bg.gain.setValueAtTime(vel * 0.35, time);
+  bg.gain.exponentialRampToValueAtTime(0.001, time + 0.06);
+  body.connect(bg); bg.connect(master);
+  noise.start(time); noise.stop(time + 0.2);
+  body.start(time);  body.stop(time + 0.07);
+  schedCleanup([noise, hp, bp, ng, body, bg, master], 0.25);
+}
+
+// ── WAV file player ────────────────────────────────────────────
+// Lazy-load + cache supaya tidak fetch berulang kali
+const _wavCache = new Map();
+
+async function _loadWav(url) {
+  if (_wavCache.has(url)) return _wavCache.get(url);
+  const ac = getCtx();
+  const resp = await fetch(url);
+  const arr  = await resp.arrayBuffer();
+  const buf  = await ac.decodeAudioData(arr);
+  _wavCache.set(url, buf);
+  return buf;
+}
+
+export function scheduleWav(url, time, velocity = 1.0) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  _loadWav(url).then(buf => {
+    const src  = ac.createBufferSource();
+    src.buffer = buf;
+    const gain = ac.createGain();
+    gain.gain.value = vel * 0.85;
+    src.connect(gain); gain.connect(ac.destination);
+    src.start(time);
+    const dur = buf.duration;
+    src.stop(time + dur);
+    schedCleanup([src, gain], dur + 0.1);
+  }).catch(e => console.warn('[audio] WAV load error:', e));
+}
