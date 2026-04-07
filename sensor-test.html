@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32 Sensor Test — 8 Hall Sensor</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #080b12;
+    --card:    #0f172a;
+    --border:  #1e293b;
+    --text:    #cbd5e1;
+    --dim:     #475569;
+    --dimmer:  #1e293b;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    font-size: 13px;
+    padding: 12px;
+    min-height: 100vh;
+  }
+
+  h1 { font-size: 16px; font-weight: 700; color: #22d3ee; }
+  h2 { font-size: 11px; font-weight: 600; color: var(--dim); letter-spacing: .08em; text-transform: uppercase; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+  }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .header-left { display: flex; align-items: baseline; gap: 10px; }
+  .header-right { display: flex; align-items: center; gap: 8px; }
+  .badge { font-size: 10px; color: var(--dim); }
+  .status-dot { font-size: 11px; font-weight: 700; }
+  .status-dot.live  { color: #4ade80; }
+  .status-dot.idle  { color: var(--dim); }
+
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 14px;
+    transition: opacity .15s, background .15s;
+  }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-connect    { background: #164e63; color: #22d3ee; }
+  .btn-connect:hover:not(:disabled) { background: #0e7490; }
+  .btn-disconnect { background: #450a0a; color: #f87171; }
+  .btn-disconnect:hover { background: #7f1d1d; }
+  .btn-gray       { background: #1e293b; color: #94a3b8; }
+  .btn-gray:hover { background: #334155; }
+  .btn-sm         { padding: 3px 10px; font-size: 11px; border-radius: 6px; }
+
+  /* ── SENSOR GRID ── */
+  .sensor-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  @media (max-width: 700px) { .sensor-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .sensor-card {
+    background: var(--card);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    transition: border-color .15s, background .15s;
+  }
+  .sensor-card.hit { animation: hit-flash .2s ease-out; }
+  @keyframes hit-flash {
+    0%   { background: #1e3a5f; }
+    100% { background: var(--card); }
+  }
+
+  .sensor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .sensor-name { font-weight: 700; font-size: 12px; letter-spacing: .06em; }
+  .chip-label  { font-size: 9px; color: var(--dimmer); background: #0f172a; padding: 1px 5px; border-radius: 4px; }
+
+  /* deviation bar */
+  .bar-track {
+    height: 8px;
+    background: #1e293b;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 6px;
+    position: relative;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width .05s linear;
+    min-width: 0;
+  }
+
+  /* LED dots */
+  .led-row { display: flex; gap: 3px; margin-bottom: 6px; }
+  .led-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: #1e293b;
+  }
+
+  /* values */
+  .vals {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    font-size: 10px;
+    color: var(--dim);
+  }
+  .val-box { background: #080b12; border-radius: 4px; padding: 2px 4px; text-align: center; }
+  .val-box span { display: block; font-size: 11px; font-weight: 700; font-family: monospace; color: var(--text); }
+
+  /* ── THRESHOLD PANEL ── */
+  .thresh-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  @media (max-width: 700px) { .thresh-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .thresh-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .thresh-title {
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .thresh-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+  }
+  .thresh-label { font-size: 10px; color: var(--dim); width: 18px; }
+  .thresh-row input[type=range] {
+    flex: 1;
+    height: 4px;
+    cursor: pointer;
+  }
+  .thresh-row input[type=number] {
+    width: 60px;
+    background: #080b12;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 11px;
+    font-family: monospace;
+    padding: 2px 4px;
+    text-align: right;
+  }
+  .thresh-apply {
+    width: 100%;
+    margin-top: 6px;
+    background: #1e293b;
+    color: #94a3b8;
+    font-size: 11px;
+    padding: 4px;
+    border-radius: 6px;
+  }
+  .thresh-apply:hover { background: #334155; }
+
+  /* ── HIT LOG ── */
+  .log-section { margin-bottom: 12px; }
+  .log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .log-box {
+    background: #020508;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    height: 160px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+  .log-entry {
+    padding: 1px 0;
+    border-bottom: 1px solid #0f172a;
+    display: flex;
+    gap: 8px;
+  }
+  .log-ts  { color: #334155; min-width: 80px; }
+  .log-hit { font-weight: 700; }
+  .log-vel { color: #94a3b8; }
+  .log-dev { color: #475569; font-size: 10px; }
+
+  /* ── RAW SERIAL ── */
+  .raw-box {
+    background: #020508;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    height: 120px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 10px;
+    padding: 6px 8px;
+  }
+  .raw-rx { color: #475569; }
+  .raw-tx { color: #0e7490; }
+
+  .section-gap { margin-bottom: 12px; }
+
+  .pkt-count { font-size: 10px; color: var(--dim); }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="header-left">
+    <h1>🔬 Sensor Test</h1>
+    <span class="badge">ESP32 · ADS1015+ADS1115 · 8× Hall</span>
+  </div>
+  <div class="header-right">
+    <span class="status-dot idle" id="status-dot">○ Idle</span>
+    <span class="pkt-count" id="pkt-count"></span>
+    <button class="btn-gray btn-sm" id="btn-reset" disabled onclick="sendCmd('r')">↺ Calibrate</button>
+    <button class="btn-gray btn-sm" id="btn-status" disabled onclick="sendCmd('s')">📋 Status</button>
+    <button class="btn-connect" id="btn-conn" onclick="toggleConn()">⚡ Sambung</button>
+  </div>
+</header>
+
+<!-- SENSOR BARS -->
+<div class="section-gap">
+  <h2 style="margin-bottom:8px">Live Sensor</h2>
+  <div class="sensor-grid" id="sensor-grid"></div>
+</div>
+
+<!-- THRESHOLD CONTROLS -->
+<div class="section-gap">
+  <h2 style="margin-bottom:8px">Threshold (hantar ke ESP32)</h2>
+  <div class="thresh-grid" id="thresh-grid"></div>
+</div>
+
+<!-- HIT LOG -->
+<div class="log-section">
+  <div class="log-header">
+    <h2>Hit Log</h2>
+    <button class="btn-gray btn-sm" onclick="clearLog()">Kosong</button>
+  </div>
+  <div class="log-box" id="hit-log"></div>
+</div>
+
+<!-- RAW SERIAL -->
+<div>
+  <div class="log-header">
+    <h2>Raw Serial</h2>
+    <button class="btn-gray btn-sm" onclick="clearRaw()">Kosong</button>
+  </div>
+  <div class="raw-box" id="raw-log"></div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────
+const NUM = 8;
+const NAMES  = ['SNARE','KICK','TOM','HI-HAT','CRASH','RIDE','PERC1','PERC2'];
+const CHIPS  = ['ADS1015','ADS1015','ADS1015','ADS1015','ADS1115','ADS1115','ADS1115','ADS1115'];
+const COLORS = ['#22d3ee','#4ade80','#f59e0b','#f472b6','#a78bfa','#fb923c','#34d399','#f87171'];
+const LED_COLORS = ['#fbbf24','#f97316','#ef4444','#a855f7'];
+
+// Default threshold — GAIN_TWO, maximum sensitivity (sama dgn firmware)
+const thresh = [
+  [10,  25,  60,  120],   // S1 ADS1015
+  [10,  25,  60,  120],   // S2 ADS1015
+  [10,  25,  60,  120],   // S3 ADS1015
+  [10,  25,  60,  120],   // S4 ADS1015
+  [80,  200, 600, 1200],  // S5 ADS1115
+  [80,  200, 600, 1200],  // S6 ADS1115
+  [80,  200, 600, 1200],  // S7 ADS1115
+  [80,  200, 600, 1200],  // S8 ADS1115
+];
+
+// State
+const state = Array.from({length: NUM}, () => ({ adc: 0, dev: 0, led: 0 }));
+let prevLed  = new Array(NUM).fill(0);
+let lastHitTs= new Array(NUM).fill(0);
+const HIT_COOLDOWN = 150;
+let pktCount = 0;
+
+// ── Build sensor cards ────────────────────────────────────────
+const grid = document.getElementById('sensor-grid');
+for (let i = 0; i < NUM; i++) {
+  const c = COLORS[i];
+  grid.innerHTML += `
+  <div class="sensor-card" id="sc${i}" style="border-color:#1e293b">
+    <div class="sensor-header">
+      <span class="sensor-name" style="color:${c}">${NAMES[i]}</span>
+      <span class="chip-label">${CHIPS[i]}</span>
+    </div>
+    <div class="bar-track">
+      <div class="bar-fill" id="bar${i}" style="width:0%;background:${c}"></div>
+    </div>
+    <div class="led-row" id="leds${i}">
+      ${[0,1,2,3].map(l=>`<div class="led-dot" id="led${i}_${l}"></div>`).join('')}
+    </div>
+    <div class="vals">
+      <div class="val-box">ADC<span id="adc${i}">0</span></div>
+      <div class="val-box">DEV<span id="dev${i}">0</span></div>
+      <div class="val-box">LED<span id="ledv${i}" style="color:${c}">0</span></div>
+    </div>
+  </div>`;
+}
+
+// ── Build threshold controls ──────────────────────────────────
+const tgrid = document.getElementById('thresh-grid');
+for (let i = 0; i < NUM; i++) {
+  const c = COLORS[i];
+  const maxVal = i < 4 ? 2000 : 32000;
+  tgrid.innerHTML += `
+  <div class="thresh-card">
+    <div class="thresh-title" style="color:${c}">${NAMES[i]} <span style="color:#334155;font-size:9px">${CHIPS[i]}</span></div>
+    ${[0,1,2,3].map(l => `
+    <div class="thresh-row">
+      <span class="thresh-label" style="color:${LED_COLORS[l]}">L${l+1}</span>
+      <input type="range" id="tslider${i}_${l}" min="1" max="${maxVal}"
+        value="${thresh[i][l]}" oninput="syncThreshInput(${i},${l},this.value)">
+      <input type="number" id="tinput${i}_${l}" min="1" max="${maxVal}"
+        value="${thresh[i][l]}" onchange="syncThreshSlider(${i},${l},this.value)">
+    </div>`).join('')}
+    <button class="thresh-apply" onclick="applyThresh(${i})">↑ Hantar S${i+1}</button>
+  </div>`;
+}
+
+function syncThreshInput(i, l, v) {
+  thresh[i][l] = +v;
+  document.getElementById(`tinput${i}_${l}`).value = v;
+}
+function syncThreshSlider(i, l, v) {
+  thresh[i][l] = +v;
+  document.getElementById(`tslider${i}_${l}`).value = v;
+}
+function applyThresh(i) {
+  for (let l = 0; l < 4; l++) {
+    sendCmd(`T${i+1}${l+1}=${thresh[i][l]}\n`);
+  }
+}
+
+// ── Update sensor display ─────────────────────────────────────
+function updateSensor(i, adc, dev, led) {
+  state[i] = { adc, dev, led };
+  document.getElementById(`adc${i}`).textContent = adc;
+  document.getElementById(`dev${i}`).textContent = dev;
+  document.getElementById(`ledv${i}`).textContent = led;
+
+  // Bar: map |dev| to 0–100% relative to thresh[3]
+  const tMax = thresh[i][3];
+  const pct = Math.min(100, Math.round(Math.abs(dev) / tMax * 100));
+  document.getElementById(`bar${i}`).style.width = pct + '%';
+
+  // LED dots
+  for (let l = 0; l < 4; l++) {
+    const el = document.getElementById(`led${i}_${l}`);
+    el.style.background = l < led ? LED_COLORS[l] : '#1e293b';
+    el.style.boxShadow  = l < led ? `0 0 4px ${LED_COLORS[l]}` : 'none';
+  }
+
+  // Card border
+  const card = document.getElementById(`sc${i}`);
+  card.style.borderColor = led > 0 ? COLORS[i] : '#1e293b';
+  card.style.background  = led > 0 ? COLORS[i] + '11' : '';
+
+  // Hit detection
+  const now = Date.now();
+  if (led > 0 && prevLed[i] === 0 && now - lastHitTs[i] > HIT_COOLDOWN) {
+    lastHitTs[i] = now;
+    const tMin = thresh[i][0], tMax2 = thresh[i][3];
+    const vel = Math.max(1, Math.min(127, Math.round((Math.abs(dev) - tMin) / (tMax2 - tMin) * 126) + 1));
+    logHit(i, vel, dev);
+    // Flash animation
+    card.classList.remove('hit');
+    void card.offsetWidth;
+    card.classList.add('hit');
+  }
+  prevLed[i] = led;
+}
+
+// ── Hit log ───────────────────────────────────────────────────
+function logHit(i, vel, dev) {
+  const box = document.getElementById('hit-log');
+  const ts  = new Date().toISOString().slice(11,23);
+  const bar = '█'.repeat(Math.round(vel/127*10));
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `
+    <span class="log-ts">${ts}</span>
+    <span class="log-hit" style="color:${COLORS[i]}">${NAMES[i]}</span>
+    <span class="log-vel">vel=${String(vel).padStart(3,' ')} ${bar}</span>
+    <span class="log-dev">dev=${dev}</span>`;
+  box.prepend(entry);
+  // Buang log lama
+  while (box.children.length > 200) box.removeChild(box.lastChild);
+}
+function clearLog() { document.getElementById('hit-log').innerHTML = ''; }
+
+// ── Raw serial log ────────────────────────────────────────────
+function logRaw(text, dir = 'rx') {
+  const box = document.getElementById('raw-log');
+  const ts  = new Date().toISOString().slice(11,23);
+  const el  = document.createElement('div');
+  el.className = dir === 'tx' ? 'raw-tx' : 'raw-rx';
+  el.textContent = `[${ts}] ${dir === 'tx' ? '>> ' : ''}${text}`;
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+  while (box.children.length > 500) box.removeChild(box.firstChild);
+}
+function clearRaw() { document.getElementById('raw-log').innerHTML = ''; }
+
+// ── Parse serial line ─────────────────────────────────────────
+const RX_DATA  = /^HALL8\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)\|(-?\d+)/;
+const RX_THRESH = /^\[THRESH(\d+)\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
+
+function parseLine(line) {
+  line = line.trim();
+  if (!line) return;
+  logRaw(line);
+
+  let m = RX_DATA.exec(line);
+  if (m) {
+    for (let i = 0; i < 8; i++) {
+      updateSensor(i, +m[i*3+1], +m[i*3+2], +m[i*3+3]);
+    }
+    pktCount++;
+    document.getElementById('pkt-count').textContent = pktCount + ' pkt';
+    return;
+  }
+
+  m = RX_THRESH.exec(line);
+  if (m) {
+    const idx = +m[1] - 1;
+    if (idx >= 0 && idx < 8) {
+      for (let l = 0; l < 4; l++) {
+        thresh[idx][l] = +m[l+2];
+        document.getElementById(`tslider${idx}_${l}`).value = thresh[idx][l];
+        document.getElementById(`tinput${idx}_${l}`).value  = thresh[idx][l];
+      }
+    }
+  }
+}
+
+// ── Web Serial ────────────────────────────────────────────────
+let port = null, reader = null, running = false, lineBuf = '';
+
+async function toggleConn() {
+  if (running) {
+    await doDisconnect();
+  } else {
+    await doConnect();
+  }
+}
+
+async function doConnect() {
+  if (!navigator.serial) {
+    alert('Web Serial API tidak disokong.\nGuna Chrome atau Edge.');
+    return;
+  }
+  try {
+    port = await navigator.serial.requestPort();
+    try { await port.close(); } catch {}
+    await delay(300);
+    await port.open({ baudRate: 115200, bufferSize: 16384 });
+    reader  = port.readable.getReader();
+    running = true;
+    setConnected(true);
+    readLoop();
+  } catch (e) {
+    if (e.name !== 'NotFoundError') alert('Gagal sambung: ' + e.message);
+  }
+}
+
+async function doDisconnect() {
+  running = false;
+  try { await reader?.cancel(); } catch {}
+  try { reader?.releaseLock(); } catch {}
+  reader = null;
+  await delay(150);
+  try { await port?.close(); } catch {}
+  port = null;
+  setConnected(false);
+}
+
+async function readLoop() {
+  const dec = new TextDecoder();
+  lineBuf = '';
+  while (running) {
+    try {
+      const { value, done } = await reader.read();
+      if (done) break;
+      lineBuf += dec.decode(value, { stream: true });
+      const lines = lineBuf.split('\n');
+      lineBuf = lines.pop() ?? '';
+      for (const l of lines) parseLine(l);
+    } catch (e) {
+      if (running) logRaw('[ERR] ' + e.message);
+      break;
+    }
+  }
+  running = false;
+  setConnected(false);
+  try { reader?.releaseLock(); } catch {}
+  reader = null;
+  try { await port?.close(); } catch {}
+  port = null;
+}
+
+async function sendCmd(cmd) {
+  if (!port?.writable) return;
+  const w = port.writable.getWriter();
+  try {
+    await w.write(new TextEncoder().encode(cmd.endsWith('\n') ? cmd : cmd + '\n'));
+    logRaw(cmd.trim(), 'tx');
+  } finally { w.releaseLock(); }
+}
+
+function setConnected(on) {
+  const dot  = document.getElementById('status-dot');
+  const btn  = document.getElementById('btn-conn');
+  const bRst = document.getElementById('btn-reset');
+  const bSt  = document.getElementById('btn-status');
+  dot.className  = 'status-dot ' + (on ? 'live' : 'idle');
+  dot.textContent= on ? '● Live' : '○ Idle';
+  btn.className  = on ? 'btn-disconnect' : 'btn-connect';
+  btn.textContent= on ? '⏏ Putus' : '⚡ Sambung';
+  bRst.disabled  = !on;
+  bSt.disabled   = !on;
+  if (!on) pktCount = 0, document.getElementById('pkt-count').textContent = '';
+}
+
+const delay = ms => new Promise(r => setTimeout(r, ms));
+</script>
+</body>
+</html>
