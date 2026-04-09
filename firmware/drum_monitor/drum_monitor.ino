@@ -67,15 +67,17 @@ inline int16_t readSensor(int s) {
 // Threshold dioptimakan: L1 diturunkan untuk sensitifitas lebih baik
 // ADS1015 (S1–S4): 2mV/count  → L1=50mV, L2=100mV, L3=200mV, L4=400mV
 // ADS1115 (S5–S8): 0.125mV/count → ×16 dari S1–S4
+// Full power — threshold paling rendah selamat (noise floor S1-S4 ≈ ±3 count)
+// EMA alpha=0.7 sudah tapis noise, IDLE_CONFIRM=4 tahan signal
 int thresh[NUM_SENSORS][4] = {
-  {25,   50,   100,  200},    // S1  (50 / 100 / 200 / 400 mV)
-  {25,   50,   100,  200},    // S2
-  {25,   50,   100,  200},    // S3
-  {25,   50,   100,  200},    // S4
-  {400,  800,  1600, 2500},   // S5  — S5 max=8409, mudah capai led=4
-  {400,  800,  1600, 2500},   // S6  — S6 max=2685, kini capai led=4
-  {400,  800,  1600, 2500},   // S7  — S7 max=3123, kini capai led=4
-  {400,  800,  1600, 2500},   // S8
+  {12,   30,   70,   140},    // S1  (24 / 60 / 140 / 280 mV)
+  {12,   30,   70,   140},    // S2
+  {12,   30,   70,   140},    // S3
+  {12,   30,   70,   140},    // S4
+  {200,  480,  1100, 2200},   // S5  (25 / 60 / 137 / 275 mV)
+  {200,  480,  1100, 2200},   // S6
+  {200,  480,  1100, 2200},   // S7
+  {200,  480,  1100, 2200},   // S8
 };
 
 int16_t baseline[NUM_SENSORS] = {0};
@@ -89,23 +91,19 @@ float fBaseline[NUM_SENSORS];     // baseline float untuk adaptive correction
 // alpha lebih besar = respons lebih pantas, atenuasi kurang
 // S8 (ADS1115 A3) lebih noise — alpha lebih kecil
 const float EMA_ALPHA_ARR[NUM_SENSORS] = {
-  0.50f, 0.50f, 0.50f, 0.50f,   // S1–S4 (alpha 0.5 → ~4ms time constant)
-  0.50f, 0.50f, 0.50f, 0.15f    // S5–S7, S8 (alpha 0.15 → ~13ms)
+  0.70f, 0.70f, 0.70f, 0.70f,   // S1–S4 (alpha 0.7 → ~3ms, tangkap hit singkat)
+  0.70f, 0.70f, 0.70f, 0.20f    // S5–S7, S8 (alpha 0.2 → ~10ms, lebih stabil)
 };
 #define BASE_ADAPT 0.002f         // drift correction ~1 second time constant
 
-// ── Hysteresis counter (cegah cross-trigger antara sensor) ────
-// LED hanya aktif bila devasi kekal > threshold 2 frame berturut-turut (40ms)
-// LED hanya mati bila devasi < threshold 2 frame berturut-turut (40ms)
-uint8_t hitConfirm[NUM_SENSORS] = {0};   // frame counter naik
-uint8_t idleConfirm[NUM_SENSORS] = {0};  // frame counter turun
-int     ledState[NUM_SENSORS]    = {0};  // LED state selepas hysteresis
-#define CONFIRM_FRAMES 2
-
-// ── Stuck sensor detection ─────────────────────────────────────
-// Jika sensor aktif berterusan >8 saat, paksa recalibrate semula
-unsigned long ledOnTime[NUM_SENSORS] = {0};  // masa mula sensor jadi aktif
-#define STUCK_DETECT_MS 2000UL
+// ── Hysteresis counter ────────────────────────────────────────
+// HIT_CONFIRM  = 1 frame (20ms)  — ON cepat, tangkap hit singkat
+// IDLE_CONFIRM = 4 frame (80ms)  — OFF lambat, tahan signal semasa hit
+uint8_t hitConfirm[NUM_SENSORS] = {0};
+uint8_t idleConfirm[NUM_SENSORS] = {0};
+int     ledState[NUM_SENSORS]    = {0};
+#define HIT_CONFIRM  1
+#define IDLE_CONFIRM 4
 
 // ── Debounce state ─────────────────────────────────────────────
 bool          prevBtnNav      = HIGH;
@@ -207,7 +205,7 @@ void calibrateOne(int s) {
   baseline[s]  = buf[SAMPLES_BASELINE / 2];
   emaAdc[s]    = (float)baseline[s];
   fBaseline[s] = (float)baseline[s];
-  hitConfirm[s] = 0; idleConfirm[s] = 0; ledState[s] = 0; ledOnTime[s] = 0;
+  hitConfirm[s] = 0; idleConfirm[s] = 0; ledState[s] = 0;
   Serial.printf("[INIT S%d] baseline=%d\n", s+1, baseline[s]);
 }
 
@@ -360,10 +358,11 @@ void loop() {
       float raw = (float)readSensor(s);
       emaAdc[s] = EMA_ALPHA_ARR[s] * raw + (1.0f - EMA_ALPHA_ARR[s]) * emaAdc[s];
       float dev = emaAdc[s] - fBaseline[s];
-      // Adaptive baseline — update sehingga L2 (bukan hanya L1)
-      // Ini membolehkan koreksi baseline error kecil dari boot calibration
-      // tanpa menunggu STUCK detection
-      if (fabsf(dev) < (float)thresh[s][1]) {
+      // Adaptive baseline — hanya bila sensor idle (ledState == 0)
+      // Tujuan: baseline mewakili keadaan tanpa magnet
+      // Bila magnet diletakkan (ledState > 0) → baseline dibekukan
+      // Bila magnet diangkat → baseline perlahan kembali ke nilai rehat
+      if (ledState[s] == 0 && fabsf(dev) < (float)thresh[s][1]) {
         fBaseline[s] += BASE_ADAPT * dev;
         baseline[s]   = (int16_t)fBaseline[s];
       }
@@ -381,38 +380,23 @@ void loop() {
       int raw = computeLed(s, curDev[s]);
 
       if (raw > 0) {
-        // Devasi hadir — kira frame naik
-        if (hitConfirm[s] < CONFIRM_FRAMES) hitConfirm[s]++;
+        // Devasi hadir — ON selepas HIT_CONFIRM frame (20ms)
+        if (hitConfirm[s] < HIT_CONFIRM) hitConfirm[s]++;
         idleConfirm[s] = 0;
-        if (hitConfirm[s] >= CONFIRM_FRAMES) ledState[s] = raw;
+        if (hitConfirm[s] >= HIT_CONFIRM) ledState[s] = raw;
       } else {
-        // Devasi hilang — kira frame turun
-        if (idleConfirm[s] < CONFIRM_FRAMES) idleConfirm[s]++;
+        // Devasi hilang — OFF selepas IDLE_CONFIRM frame (80ms)
+        // Hold lebih lama supaya signal tidak putus ditengah hit
+        if (idleConfirm[s] < IDLE_CONFIRM) idleConfirm[s]++;
         hitConfirm[s] = 0;
-        if (idleConfirm[s] >= CONFIRM_FRAMES) ledState[s] = 0;
+        if (idleConfirm[s] >= IDLE_CONFIRM) ledState[s] = 0;
       }
 
       led[s] = ledState[s];
     }
 
-    // Stuck sensor detection — sensor stuck >8 saat → paksa recalibrate
-    // Ini selesaikan deadlock: baseline salah → dev besar → led=3 kekal
-    // allIdle tidak tercapai → auto-recal tidak jalan → baseline tidak betul
-    for (int s = 0; s < NUM_SENSORS; s++) {
-      if (led[s] > 0) {
-        if (ledOnTime[s] == 0) ledOnTime[s] = now;
-        else if (now - ledOnTime[s] > STUCK_DETECT_MS) {
-          // EMA sudah converge ke nilai sebenar sensor — guna terus sebagai baseline
-          baseline[s]  = (int16_t)emaAdc[s];
-          fBaseline[s] = emaAdc[s];
-          hitConfirm[s] = 0; idleConfirm[s] = 0; ledState[s] = 0;
-          led[s] = 0; ledOnTime[s] = 0;
-          Serial.printf("[STUCK S%d] recal=%d\n", s+1, baseline[s]);
-        }
-      } else {
-        ledOnTime[s] = 0;
-      }
-    }
+    // Stuck detection dibuang — sensor harus ON selama magnet ada,
+    // tidak ada batas waktu maksimum aktif.
 
     Serial.printf("HALL8|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d\n",
       (int16_t)emaAdc[0], curDev[0], led[0],
