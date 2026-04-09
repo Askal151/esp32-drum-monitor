@@ -5,7 +5,7 @@
   import { onMount } from 'svelte';
   import { hitEvent } from './serial.js';
 
-  export let idx   = 0;       // 0=snare, 1=kick
+  export let idx   = 0;
   export let name  = 'SNARE';
   export let color = '#22d3ee';
   export let adc   = 0;
@@ -13,6 +13,10 @@
   export let led   = 0;
   export let hits      = 0;
   export let bpm       = 0;
+  export let seqBpm    = 120;
+  export let pitch     = 0;
+  export let bpmSelected   = false;
+  export let pitchSelected = false;
   export let hasSample = false;
 
   let canvas, ctx, rafId;
@@ -186,18 +190,49 @@
   </div>
 
   <!-- Stats bawah pad -->
-  <div class="grid grid-cols-3 gap-2 w-full text-center">
+  <div class="grid grid-cols-2 gap-1.5 w-full text-center">
     <div class="bg-slate-900 rounded-lg py-1.5">
       <div class="text-xs text-slate-600">HIT</div>
       <div class="text-sm font-bold font-mono" style="color:{color}">{hits}</div>
     </div>
     <div class="bg-slate-900 rounded-lg py-1.5">
-      <div class="text-xs text-slate-600">BPM</div>
-      <div class="text-sm font-bold font-mono" style="color:{color}">{bpm > 0 ? bpm : '—'}</div>
-    </div>
-    <div class="bg-slate-900 rounded-lg py-1.5">
       <div class="text-xs text-slate-600">DEV</div>
       <div class="text-sm font-bold font-mono" style="color:{color}">{dev}</div>
+    </div>
+  </div>
+
+  <!-- BPM bar -->
+  <div class="w-full rounded-lg px-2 py-1.5 transition-all"
+    style="background:{bpmSelected ? color + '18' : '#0f172a'}; border:1px solid {bpmSelected ? color + '44' : '#1e293b'}">
+    <div class="flex items-center justify-between mb-1">
+      <span class="text-[10px]" style="color:{bpmSelected ? color : '#475569'}">BPM</span>
+      <span class="text-[10px] font-bold font-mono" style="color:{bpmSelected ? color : '#64748b'}">{seqBpm}</span>
+    </div>
+    <div class="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+      <div class="h-full rounded-full transition-all duration-200"
+        style="width:{((seqBpm - 40) / 160 * 100).toFixed(1)}%; background:{color}{bpmSelected ? '' : '88'}"></div>
+    </div>
+  </div>
+
+  <!-- Pitch bar -->
+  <div class="w-full rounded-lg px-2 py-1.5 transition-all"
+    style="background:{pitchSelected ? color + '18' : '#0f172a'}; border:1px solid {pitchSelected ? color + '44' : '#1e293b'}">
+    <div class="flex items-center justify-between mb-1">
+      <span class="text-[10px]" style="color:{pitchSelected ? color : '#475569'}">Pitch</span>
+      <span class="text-[10px] font-bold font-mono" style="color:{pitchSelected ? color : '#64748b'}">
+        {pitch > 0 ? '+' : ''}{pitch} st
+      </span>
+    </div>
+    <div class="h-1.5 bg-slate-800 rounded-full overflow-hidden relative">
+      <!-- Bar dari tengah ke kiri/kanan -->
+      <div class="absolute top-0 h-full rounded-full transition-all duration-200"
+        style="
+          left:{pitch >= 0 ? '50%' : (50 + pitch / 12 * 50).toFixed(1) + '%'};
+          width:{(Math.abs(pitch) / 12 * 50).toFixed(1)}%;
+          background:{color}{pitchSelected ? '' : '88'}
+        "></div>
+      <!-- Tanda tengah -->
+      <div class="absolute top-0 h-full w-px bg-slate-600" style="left:50%"></div>
     </div>
   </div>
 </div>

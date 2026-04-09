@@ -3,23 +3,26 @@
  * Sensor : 8x Hall Effect
  *   ADS1015 @ 0x48 (ADDR=GND) — S1–S4 (A0–A3)
  *   ADS1115 @ 0x49 (ADDR=VDD) — S5–S8 (A0–A3)
- * Button NAV    : GPIO 26  — tekan untuk next sample
- * Button SEL    : GPIO 25  — tekan untuk simpan/confirm sample
- * Button BPMNAV : GPIO 27  — tekan untuk pilih sensor BPM (S1→S2→...→S8→S1)
- * Potensio BPM  : GPIO 34  — putar untuk ubah BPM sensor dipilih (40–200 BPM)
+ * Button NAV      : GPIO 26  — tekan untuk next sample
+ * Button SEL      : GPIO 25  — tekan untuk simpan/confirm sample
+ * Button BPMNAV   : GPIO 27  — tekan untuk pilih sensor BPM (S1→S2→...→S8→S1)
+ * Potensio BPM    : GPIO 34  — putar untuk ubah BPM sensor dipilih (40–200 BPM)
+ * Button PITCHNAV : GPIO 18  — tekan untuk pilih sensor Pitch (S1→S2→...→S8→S1)
+ * Potensio Pitch  : GPIO 35  — putar untuk ubah Pitch sensor dipilih (-12..+12 semitone)
  *
  * CATATAN PIN:
- *   GPIO 25/26/27 = mendukung INPUT_PULLUP (active LOW)
- *   GPIO 34       = ADC1 CH6, input-only, untuk potensio
+ *   GPIO 25/26/27/18 = mendukung INPUT_PULLUP (active LOW)
+ *   GPIO 34/35       = ADC1, input-only, untuk potensio
  *   I2C : SDA=21, SCL=22 (kongsi oleh kedua-dua ADS)
  *   ADS1015 ADDR pin → GND  (alamat 0x48) — GAIN_TWO, 1mV/count
  *   ADS1115 ADDR pin → VDD  (alamat 0x49) — GAIN_TWO, 0.0625mV/count
  *
  * Serial Output @ 115200:
  *   HALL8|adc1|dev1|led1|...|adc8|dev8|led8  (24 nilai)
- *   [BTN]NAV         — button NAV ditekan  (GPIO 26)
- *   [BTN]SEL         — button SEL ditekan  (GPIO 25)
- *   [BPMCTRL]sel|bpm — BPM semasa (setiap 100ms), sel=0–7
+ *   [BTN]NAV           — button NAV ditekan  (GPIO 26)
+ *   [BTN]SEL           — button SEL ditekan  (GPIO 25)
+ *   [BPMCTRL]sel|bpm   — BPM semasa (setiap 100ms), sel=0–7
+ *   [PITCHCTRL]sel|pitch — Pitch semasa (setiap 100ms), sel=0–7, pitch=-12..+12
  *
  * Threshold:
  *   S1–S4 (ADS1015, 12-bit): level 1 = 40 counts (~80mV)
@@ -40,12 +43,14 @@ inline int16_t readSensor(int s) {
 }
 
 // ── Pin Button (active LOW, internal pull-up) ──────────────────
-#define BTN_NAV    26
-#define BTN_SEL    25
-#define BTN_BPMNAV 27   // Button pilih sensor BPM
+#define BTN_NAV      26
+#define BTN_SEL      25
+#define BTN_BPMNAV   27   // Button pilih sensor BPM
+#define BTN_PITCHNAV 18   // Button pilih sensor Pitch
 
-// ── Pin Potensio BPM ───────────────────────────────────────────
+// ── Pin Potensio ───────────────────────────────────────────────
 #define POT_BPM    34   // ADC1 CH6, input-only
+#define POT_PITCH  35   // ADC1 CH7, input-only
 
 // ── Sensor config ──────────────────────────────────────────────
 #define NUM_SENSORS          8
@@ -87,32 +92,42 @@ int     ledState[NUM_SENSORS]    = {0};  // LED state selepas hysteresis
 #define CONFIRM_FRAMES 2
 
 // ── Debounce state ─────────────────────────────────────────────
-bool          prevBtnNav    = HIGH;
-bool          prevBtnSel    = HIGH;
-bool          prevBtnBpmNav = HIGH;
-unsigned long lastNavTime    = 0;
-unsigned long lastSelTime    = 0;
-unsigned long lastBpmNavTime = 0;
+bool          prevBtnNav      = HIGH;
+bool          prevBtnSel      = HIGH;
+bool          prevBtnBpmNav   = HIGH;
+bool          prevBtnPitchNav = HIGH;
+unsigned long lastNavTime      = 0;
+unsigned long lastSelTime      = 0;
+unsigned long lastBpmNavTime   = 0;
+unsigned long lastPitchNavTime = 0;
 
 // ── BPM control state ──────────────────────────────────────────
 int           bpmSel                    = 0;   // Sensor yang dipilih untuk BPM (0–7)
 int           sensorBpmArr[NUM_SENSORS];       // BPM tersimpan per sensor
 int           potBpmPrev                = -1;  // Bacaan pot terakhir — detect pergerakan
 
+// ── Pitch control state ────────────────────────────────────────
+int           pitchSel                    = 0;   // Sensor yang dipilih untuk Pitch (0–7)
+int           sensorPitchArr[NUM_SENSORS];       // Pitch tersimpan per sensor (-12..+12)
+int           potPitchPrev                = -99; // Bacaan pot terakhir — detect pergerakan
+
 // ── Timing ────────────────────────────────────────────────────
-unsigned long lastSampleTime = 0;
-unsigned long lastSerialTime = 0;
-unsigned long lastBpmSendTime = 0;
-#define BPM_SEND_INTERVAL_MS 100      // Hantar [BPMCTRL] setiap 100ms
+unsigned long lastSampleTime   = 0;
+unsigned long lastSerialTime   = 0;
+unsigned long lastBpmSendTime  = 0;
+unsigned long lastPitchSendTime = 0;
+#define BPM_SEND_INTERVAL_MS   100    // Hantar [BPMCTRL] setiap 100ms
+#define PITCH_SEND_INTERVAL_MS 100    // Hantar [PITCHCTRL] setiap 100ms
 
 // ── Setup ──────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
   delay(300);
 
-  pinMode(BTN_NAV,    INPUT_PULLUP);
-  pinMode(BTN_SEL,    INPUT_PULLUP);
-  pinMode(BTN_BPMNAV, INPUT_PULLUP);
+  pinMode(BTN_NAV,      INPUT_PULLUP);
+  pinMode(BTN_SEL,      INPUT_PULLUP);
+  pinMode(BTN_BPMNAV,   INPUT_PULLUP);
+  pinMode(BTN_PITCHNAV, INPUT_PULLUP);
 
   Wire.begin();
 
@@ -138,17 +153,23 @@ void setup() {
   for (int i = 0; i < NUM_SENSORS; i++) sensorBpmArr[i] = 120;
   potBpmPrev = readBpm();   // rekod posisi awal pot tanpa update sensorBpmArr
 
+  // Init Pitch per sensor (0 semitone default)
+  for (int i = 0; i < NUM_SENSORS; i++) sensorPitchArr[i] = 0;
+  potPitchPrev = readPitch();   // rekod posisi awal pot tanpa update sensorPitchArr
+
   for (int s = 0; s < NUM_SENSORS; s++) {
     Serial.printf("[THRESH%d] %d|%d|%d|%d\n", s+1,
       thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3]);
   }
 
-  Serial.printf("[DEBUG] NAV=%d SEL=%d BPMNAV=%d POT=%d\n",
+  Serial.printf("[DEBUG] NAV=%d SEL=%d BPMNAV=%d POT=%d PITCHNAV=%d PITCHPOT=%d\n",
     digitalRead(BTN_NAV), digitalRead(BTN_SEL),
-    digitalRead(BTN_BPMNAV), analogRead(POT_BPM));
+    digitalRead(BTN_BPMNAV), analogRead(POT_BPM),
+    digitalRead(BTN_PITCHNAV), analogRead(POT_PITCH));
   Serial.println("[READY]");
-  // Hantar state BPM awal supaya frontend tahu BPM sensor 0
+  // Hantar state awal supaya frontend tahu nilai sensor 0
   Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, sensorBpmArr[bpmSel]);
+  Serial.printf("[PITCHCTRL]%d|%d\n", pitchSel, sensorPitchArr[pitchSel]);
 }
 
 // ── Sort helper untuk median ────────────────────────────────────
@@ -193,6 +214,13 @@ int readBpm() {
   return map(sum / 16, 0, 4095, 40, 200);
 }
 
+// ── Baca potensio → Pitch (-12..+12 semitone) dengan averaging ─
+int readPitch() {
+  long sum = 0;
+  for (int i = 0; i < 16; i++) sum += analogRead(POT_PITCH);
+  return map(sum / 16, 0, 4095, -12, 12);
+}
+
 // ── Poll buttons (non-blocking debounce) ──────────────────────
 void pollButtons() {
   unsigned long now = millis();
@@ -220,6 +248,16 @@ void pollButtons() {
     Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, sensorBpmArr[bpmSel]);
   }
   prevBtnBpmNav = bpmNav;
+
+  // Button PITCHNAV — cycle sensor yang dipilih untuk Pitch
+  bool pitchNav = digitalRead(BTN_PITCHNAV);
+  if (prevBtnPitchNav == HIGH && pitchNav == LOW && now - lastPitchNavTime > DEBOUNCE_MS) {
+    lastPitchNavTime = now;
+    pitchSel = (pitchSel + 1) % NUM_SENSORS;
+    // Hantar Pitch tersimpan sensor baru serta-merta — BUKAN posisi potensio
+    Serial.printf("[PITCHCTRL]%d|%d\n", pitchSel, sensorPitchArr[pitchSel]);
+  }
+  prevBtnPitchNav = pitchNav;
 }
 
 // ── Serial command handler ─────────────────────────────────────
@@ -349,7 +387,7 @@ void loop() {
     }
   }
 
-  // 4. Cek pergerakan potensio setiap 100ms
+  // 4. Cek pergerakan potensio BPM setiap 100ms
   //    Hanya update BPM bila pot BERGERAK ≥ 2 BPM dari bacaan sebelum
   //    Sensor lain TIDAK terjejas — setiap sensor simpan BPM sendiri
   if (now - lastBpmSendTime >= BPM_SEND_INTERVAL_MS) {
@@ -359,6 +397,18 @@ void loop() {
       potBpmPrev = potBpm;
       sensorBpmArr[bpmSel] = potBpm;  // update hanya sensor yang dipilih
       Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, potBpm);
+    }
+  }
+
+  // 4b. Cek pergerakan potensio Pitch setiap 100ms
+  //     Hanya update Pitch bila pot BERGERAK dari bacaan sebelum
+  if (now - lastPitchSendTime >= PITCH_SEND_INTERVAL_MS) {
+    lastPitchSendTime = now;
+    int potPitch = readPitch();
+    if (potPitch != potPitchPrev) {
+      potPitchPrev = potPitch;
+      sensorPitchArr[pitchSel] = potPitch;  // update hanya sensor yang dipilih
+      Serial.printf("[PITCHCTRL]%d|%d\n", pitchSel, potPitch);
     }
   }
 

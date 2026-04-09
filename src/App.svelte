@@ -12,7 +12,7 @@
   import {
     portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd,
-    hitEvent, btnEvent, bpmCtrl,
+    hitEvent, btnEvent, bpmCtrl, pitchCtrl,
   } from './lib/serial.js';
   import { get } from 'svelte/store';
   import {
@@ -38,6 +38,10 @@
   // sensorBpm:  Svelte reactive copy — untuk update template sahaja
   const _sensorBpm = new Array(8).fill(120);   // dibaca dalam closure
   let   sensorBpm  = new Array(8).fill(120);   // untuk template display
+
+  // ── Pitch override per sensor (dari potensio + button PITCHNAV) ──
+  const _sensorPitch = new Array(8).fill(0);   // semitones -12..+12, dibaca dalam closure
+  let   sensorPitch  = new Array(8).fill(0);   // untuk template display
 
   // ── Per-sensor beat sequencer (BEAT_DATA-driven) ──────────────
   // Setiap sensor memainkan pola beat lengkap (16-step) dari BEAT_DATA
@@ -88,12 +92,13 @@
           ? Math.max(0.3, Math.min(1.0, (Math.abs(s.dev) - s.thresh[0]) / (s.thresh[3] - s.thresh[0])))
           : 0.7;
 
+        const pitchRate = Math.pow(2, (_sensorPitch[idx] || 0) / 12);
         if (beat.isWav) {
-          if (step % 4 === 0) SAMPLE_FNS[beatId]?.(t, vel);
+          if (step % 4 === 0) SAMPLE_FNS[beatId]?.(t, vel, pitchRate);
         } else {
           for (const [instrId, pattern] of Object.entries(beat.tracks)) {
             const v = pattern[step];
-            if (v > 0) SAMPLE_FNS[instrId]?.(t, v * vel);
+            if (v > 0) SAMPLE_FNS[instrId]?.(t, v * vel, pitchRate);
           }
         }
 
@@ -157,20 +162,31 @@
   });
 
   // ── BPM control dari potensio + button BPMNAV ────────────────
-  // $: reactive statement (Svelte 5 safe) — jalankan setiap kali $bpmCtrl berubah
-  // Ini lebih reliable dari .subscribe() dalam Svelte 5
   $: {
     const { sel, bpm: b } = $bpmCtrl;
     _sensorBpm[sel] = b;
     sensorBpm = [..._sensorBpm];
   }
 
-  // Helper — update BPM sesuatu sensor (dari keyboard shortcut atau UI button)
   function applyBpm(sel, bpm) {
     const b = Math.max(40, Math.min(200, bpm));
     _sensorBpm[sel] = b;
     sensorBpm = [..._sensorBpm];
     bpmCtrl.set({ sel, bpm: b });
+  }
+
+  // ── Pitch control dari potensio + button PITCHNAV ─────────────
+  $: {
+    const { sel, pitch: p } = $pitchCtrl;
+    _sensorPitch[sel] = p;
+    sensorPitch = [..._sensorPitch];
+  }
+
+  function applyPitch(sel, pitch) {
+    const p = Math.max(-12, Math.min(12, pitch));
+    _sensorPitch[sel] = p;
+    sensorPitch = [..._sensorPitch];
+    pitchCtrl.set({ sel, pitch: p });
   }
 
   // ── Button fizikal NAV / SEL ───────────────────────────────────
@@ -212,8 +228,8 @@
   function rmove(e)  { if(resizing) panelH=Math.max(200,Math.min(700,rh0+ry0-e.clientY)); }
   function rend()    { resizing=false; }
 
-  // Keyboard shortcut untuk test: N = NAV, S = SEL
-  // BPM: B = next sensor, [ = -5 BPM, ] = +5 BPM
+  // Keyboard shortcut: N=NAV, S=SEL, B=next BPM sensor, [=BPM-5, ]=BPM+5
+  // P=next Pitch sensor, ,=Pitch-1, .=Pitch+1
   function onKeydown(e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if (e.key === 'n' || e.key === 'N') { btnNav(isRunning() ? getAudioCtx() : null); tab = 'assign'; }
@@ -224,6 +240,12 @@
     }
     if (e.key === '[') { const s = get(bpmCtrl).sel; applyBpm(s, _sensorBpm[s] - 5); }
     if (e.key === ']') { const s = get(bpmCtrl).sel; applyBpm(s, _sensorBpm[s] + 5); }
+    if (e.key === 'p' || e.key === 'P') {
+      const nextSel = (get(pitchCtrl).sel + 1) % 8;
+      pitchCtrl.set({ sel: nextSel, pitch: _sensorPitch[nextSel] });
+    }
+    if (e.key === ',') { const s = get(pitchCtrl).sel; applyPitch(s, _sensorPitch[s] - 1); }
+    if (e.key === '.') { const s = get(pitchCtrl).sel; applyPitch(s, _sensorPitch[s] + 1); }
   }
 </script>
 
@@ -292,28 +314,62 @@
     <!-- BPM control panel — potensio + button BPMNAV / keyboard B [ ] -->
     <div class="flex items-center gap-2 px-1 py-1 rounded-lg bg-slate-900 border border-slate-800">
       <span class="text-[10px] text-slate-500 shrink-0">🎛 BPM:</span>
-      <!-- Butang cycle sensor (simulasi button BPMNAV) -->
       <button
         class="text-[10px] px-2 py-0.5 rounded font-bold border transition-colors shrink-0"
         style="border-color:{CLR[$bpmCtrl.sel]}44; color:{CLR[$bpmCtrl.sel]}; background:{CLR[$bpmCtrl.sel]}15"
         on:click={() => { const next = ($bpmCtrl.sel + 1) % 8; bpmCtrl.set({ sel: next, bpm: _sensorBpm[next] }); }}
         title="Cycle sensor (B)"
       >▶ {NAMES[$bpmCtrl.sel]}</button>
-      <!-- Butang - BPM -->
       <button
         class="text-xs w-6 h-6 rounded bg-slate-800 text-slate-400 hover:bg-slate-700 font-bold shrink-0"
         on:click={() => applyBpm($bpmCtrl.sel, sensorBpm[$bpmCtrl.sel] - 5)}
         title="BPM -5 ([)"
       >−</button>
-      <!-- BPM value display -->
       <span class="text-sm font-bold text-white w-12 text-center shrink-0">{sensorBpm[$bpmCtrl.sel]}</span>
-      <!-- Butang + BPM -->
       <button
         class="text-xs w-6 h-6 rounded bg-slate-800 text-slate-400 hover:bg-slate-700 font-bold shrink-0"
         on:click={() => applyBpm($bpmCtrl.sel, sensorBpm[$bpmCtrl.sel] + 5)}
         title="BPM +5 (])"
       >+</button>
-      <span class="text-[10px] text-slate-600 ml-1 shrink-0">BPM · kb: B [ ]</span>
+      <!-- BPM mini bar -->
+      <div class="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden mx-1">
+        <div class="h-full rounded-full transition-all duration-150"
+          style="width:{((sensorBpm[$bpmCtrl.sel] - 40) / 160 * 100).toFixed(1)}%; background:{CLR[$bpmCtrl.sel]}"></div>
+      </div>
+      <span class="text-[10px] text-slate-600 shrink-0">kb: B [ ]</span>
+    </div>
+    <!-- Pitch control panel — potensio + button PITCHNAV / keyboard P , . -->
+    <div class="flex items-center gap-2 px-1 py-1 rounded-lg bg-slate-900 border border-slate-800">
+      <span class="text-[10px] text-slate-500 shrink-0">🎵 Pitch:</span>
+      <button
+        class="text-[10px] px-2 py-0.5 rounded font-bold border transition-colors shrink-0"
+        style="border-color:{CLR[$pitchCtrl.sel]}44; color:{CLR[$pitchCtrl.sel]}; background:{CLR[$pitchCtrl.sel]}15"
+        on:click={() => { const next = ($pitchCtrl.sel + 1) % 8; pitchCtrl.set({ sel: next, pitch: _sensorPitch[next] }); }}
+        title="Cycle sensor (P)"
+      >▶ {NAMES[$pitchCtrl.sel]}</button>
+      <button
+        class="text-xs w-6 h-6 rounded bg-slate-800 text-slate-400 hover:bg-slate-700 font-bold shrink-0"
+        on:click={() => applyPitch($pitchCtrl.sel, sensorPitch[$pitchCtrl.sel] - 1)}
+        title="Pitch -1 (,)"
+      >−</button>
+      <span class="text-sm font-bold text-white w-14 text-center shrink-0">
+        {sensorPitch[$pitchCtrl.sel] > 0 ? '+' : ''}{sensorPitch[$pitchCtrl.sel]} st
+      </span>
+      <button
+        class="text-xs w-6 h-6 rounded bg-slate-800 text-slate-400 hover:bg-slate-700 font-bold shrink-0"
+        on:click={() => applyPitch($pitchCtrl.sel, sensorPitch[$pitchCtrl.sel] + 1)}
+        title="Pitch +1 (.)"
+      >+</button>
+      <!-- Pitch bi-directional bar (tengah = 0) -->
+      <div class="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden mx-1 relative">
+        <div class="absolute top-0 h-full rounded-full transition-all duration-150"
+          style="
+            left:{sensorPitch[$pitchCtrl.sel] >= 0 ? '50%' : (50 + sensorPitch[$pitchCtrl.sel] / 12 * 50).toFixed(1) + '%'};
+            width:{(Math.abs(sensorPitch[$pitchCtrl.sel]) / 12 * 50).toFixed(1)}%;
+            background:{CLR[$pitchCtrl.sel]}
+          "></div>
+      </div>
+      <span class="text-[10px] text-slate-600 shrink-0">kb: P , .</span>
     </div>
     <!-- Stop All -->
     {#if seqActive.some(Boolean)}
@@ -340,11 +396,16 @@
             <div class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
               {NAMES[i]}
             </div>
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1 flex-wrap justify-end">
               {#if $bpmCtrl.sel === i}
-                <span class="text-[9px] font-bold px-1 rounded" style="background:{CLR[i]}22; color:{CLR[i]}">🎛 {$bpmCtrl.bpm}</span>
+                <span class="text-[9px] font-bold px-1 rounded" style="background:{CLR[i]}22; color:{CLR[i]}">🎛 {sensorBpm[i]} BPM</span>
               {:else}
                 <span class="text-[9px] text-slate-700">{sensorBpm[i]} BPM</span>
+              {/if}
+              {#if $pitchCtrl.sel === i}
+                <span class="text-[9px] font-bold px-1 rounded" style="background:{CLR[i]}22; color:{CLR[i]}">🎵 {sensorPitch[i] > 0 ? '+' : ''}{sensorPitch[i]}st</span>
+              {:else if sensorPitch[i] !== 0}
+                <span class="text-[9px] text-slate-700">{sensorPitch[i] > 0 ? '+' : ''}{sensorPitch[i]}st</span>
               {/if}
               <span class="text-[9px] text-slate-700">{chip}</span>
             </div>
@@ -388,15 +449,19 @@
           </button>
         </div>
         <DrumPad
-          idx       = {i}
-          name      = {NAMES[i]}
-          color     = {CLR[i]}
-          adc       = {s.adc}
-          dev       = {s.dev}
-          led       = {s.led}
-          hits      = {hits[i]}
-          bpm       = {bpm[i]}
-          hasSample = {!!sample.id}
+          idx          = {i}
+          name         = {NAMES[i]}
+          color        = {CLR[i]}
+          adc          = {s.adc}
+          dev          = {s.dev}
+          led          = {s.led}
+          hits         = {hits[i]}
+          bpm          = {bpm[i]}
+          seqBpm       = {sensorBpm[i]}
+          pitch        = {sensorPitch[i]}
+          bpmSelected  = {$bpmCtrl.sel === i}
+          pitchSelected = {$pitchCtrl.sel === i}
+          hasSample    = {!!sample.id}
         />
       </div>
     {/each}

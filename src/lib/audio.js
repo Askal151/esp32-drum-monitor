@@ -14,6 +14,9 @@ function getCtx() {
   return ctx;
 }
 
+// Helper: apply pitch rate to frequency
+const fr = (freq, rate) => freq * Math.max(0.25, Math.min(4.0, rate || 1.0));
+
 // ── Cleanup helper — disconnect semua nodes selepas bunyi selesai ──
 // Tanpa ini, nodes terkumpul dalam audio graph → crash selepas ~1 minit
 function schedCleanup(nodes, maxDurSec) {
@@ -326,7 +329,7 @@ export async function unlockAudio() {
 // ── One-shot scheduled hits (untuk beat sequencer) ─────────────
 // time = AudioContext.currentTime pada masa beat berlaku
 
-export function scheduleKick(time, velocity = 1.0) {
+export function scheduleKick(time, velocity = 1.0, rate = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
@@ -338,14 +341,14 @@ export function scheduleKick(time, velocity = 1.0) {
   // Sub bass pitch sweep
   const osc = ac.createOscillator();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(160, time);
-  osc.frequency.exponentialRampToValueAtTime(45, time + 0.35);
+  osc.frequency.setValueAtTime(fr(160, rate), time);
+  osc.frequency.exponentialRampToValueAtTime(fr(45, rate), time + 0.35);
 
   // Click transient
   const click = ac.createOscillator();
   click.type = 'square';
-  click.frequency.setValueAtTime(1000, time);
-  click.frequency.exponentialRampToValueAtTime(150, time + 0.02);
+  click.frequency.setValueAtTime(fr(1000, rate), time);
+  click.frequency.exponentialRampToValueAtTime(fr(150, rate), time + 0.02);
   const cg = ac.createGain();
   cg.gain.setValueAtTime(vel * 0.25, time);
   cg.gain.exponentialRampToValueAtTime(0.001, time + 0.025);
@@ -364,7 +367,7 @@ export function scheduleKick(time, velocity = 1.0) {
   schedCleanup([osc, click, cg, lp, dist, master], 0.6);
 }
 
-export function scheduleSnare(time, velocity = 1.0) {
+export function scheduleSnare(time, velocity = 1.0, rate = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
@@ -389,8 +392,8 @@ export function scheduleSnare(time, velocity = 1.0) {
   // Body tone
   const body = ac.createOscillator();
   body.type = 'triangle';
-  body.frequency.setValueAtTime(200, time);
-  body.frequency.exponentialRampToValueAtTime(90, time + 0.07);
+  body.frequency.setValueAtTime(fr(200, rate), time);
+  body.frequency.exponentialRampToValueAtTime(fr(90, rate), time + 0.07);
   const bg = ac.createGain();
   bg.gain.setValueAtTime(vel * 0.4, time);
   bg.gain.exponentialRampToValueAtTime(0.001, time + 0.09);
@@ -403,7 +406,7 @@ export function scheduleSnare(time, velocity = 1.0) {
   schedCleanup([noise, bp, hp, body, bg, master], 0.35);
 }
 
-export function scheduleHihat(time, velocity = 0.5, open = false) {
+export function scheduleHihat(time, velocity = 0.5, open = false, rate = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.05, Math.min(1.0, velocity));
   const dur = open ? 0.3 : 0.06;
@@ -459,14 +462,14 @@ export function scheduleClap(time, velocity = 0.8) {
   schedCleanup(clapNodes, 0.15);
 }
 
-export function scheduleRim(time, velocity = 0.7) {
+export function scheduleRim(time, velocity = 0.7, rate = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
   const osc = ac.createOscillator();
   osc.type = 'square';
-  osc.frequency.setValueAtTime(1600, time);
-  osc.frequency.exponentialRampToValueAtTime(400, time + 0.05);
+  osc.frequency.setValueAtTime(fr(1600, rate), time);
+  osc.frequency.exponentialRampToValueAtTime(fr(400, rate), time + 0.05);
 
   const g = ac.createGain();
   g.gain.setValueAtTime(vel * 0.5, time);
@@ -582,7 +585,7 @@ export function scheduleSynth(freq, time, velocity = 0.8, duration = 0.25) {
  *  Pitch ~300Hz (drum ketiga/tengah dari set 5 drum)
  *  Bunyi organik: tok kayu keras + tubuh resonans + sedikit sustain pitched
  */
-export function scheduleTaganing(time, velocity = 1.0) {
+export function scheduleTaganing(time, velocity = 1.0, rate = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
@@ -593,8 +596,8 @@ export function scheduleTaganing(time, velocity = 1.0) {
   // Osilator bersegi pendek dengan sweep cepat (kesan mallet kayu)
   const tok = ac.createOscillator();
   tok.type = 'square';
-  tok.frequency.setValueAtTime(680, time);
-  tok.frequency.exponentialRampToValueAtTime(280, time + 0.018);
+  tok.frequency.setValueAtTime(fr(680, rate), time);
+  tok.frequency.exponentialRampToValueAtTime(fr(280, rate), time + 0.018);
   const tokLp = ac.createBiquadFilter();
   tokLp.type = 'lowpass'; tokLp.frequency.value = 1200; tokLp.Q.value = 1.5;
   const tokG = ac.createGain();
@@ -606,8 +609,8 @@ export function scheduleTaganing(time, velocity = 1.0) {
   // Drum taganing ada pitch jelas — sine dengan decay panjang sedikit
   const body = ac.createOscillator();
   body.type = 'sine';
-  body.frequency.setValueAtTime(310, time);          // pitch drum tengah set
-  body.frequency.exponentialRampToValueAtTime(295, time + 0.06); // settle
+  body.frequency.setValueAtTime(fr(310, rate), time);          // pitch drum tengah set
+  body.frequency.exponentialRampToValueAtTime(fr(295, rate), time + 0.06); // settle
   const bodyG = ac.createGain();
   bodyG.gain.setValueAtTime(vel * 0.55, time);
   bodyG.gain.exponentialRampToValueAtTime(0.001, time + 0.55);  // sustain pitched
@@ -616,7 +619,7 @@ export function scheduleTaganing(time, velocity = 1.0) {
   // Harmonik ke-2 (kayu resonat)
   const body2 = ac.createOscillator();
   body2.type = 'sine';
-  body2.frequency.value = 620;
+  body2.frequency.value = fr(620, rate);
   const body2G = ac.createGain();
   body2G.gain.setValueAtTime(vel * 0.18, time);
   body2G.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
@@ -649,7 +652,7 @@ export function scheduleTaganing(time, velocity = 1.0) {
 }
 
 /** Odap — drum pengiring lebih kecil, bunyi lebih kering & pendek */
-export function scheduleOdap(time, velocity = 1.0) {
+export function scheduleOdap(time, velocity = 1.0, rate = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
@@ -659,8 +662,8 @@ export function scheduleOdap(time, velocity = 1.0) {
   // Tok kayu lebih kecil
   const tok = ac.createOscillator();
   tok.type = 'square';
-  tok.frequency.setValueAtTime(520, time);
-  tok.frequency.exponentialRampToValueAtTime(210, time + 0.014);
+  tok.frequency.setValueAtTime(fr(520, rate), time);
+  tok.frequency.exponentialRampToValueAtTime(fr(210, rate), time + 0.014);
   const tokG = ac.createGain();
   tokG.gain.setValueAtTime(vel * 0.5, time);
   tokG.gain.exponentialRampToValueAtTime(0.001, time + 0.02);
@@ -671,8 +674,8 @@ export function scheduleOdap(time, velocity = 1.0) {
   // Body pitched rendah (drum lebih kecil = pitch lebih tinggi ~400Hz)
   const body = ac.createOscillator();
   body.type = 'sine';
-  body.frequency.setValueAtTime(420, time);
-  body.frequency.exponentialRampToValueAtTime(400, time + 0.04);
+  body.frequency.setValueAtTime(fr(420, rate), time);
+  body.frequency.exponentialRampToValueAtTime(fr(400, rate), time + 0.04);
   const bodyG = ac.createGain();
   bodyG.gain.setValueAtTime(vel * 0.45, time);
   bodyG.gain.exponentialRampToValueAtTime(0.001, time + 0.28);
@@ -684,7 +687,7 @@ export function scheduleOdap(time, velocity = 1.0) {
 }
 
 /** Hesek — instrumen perkusi logam (seperti gong kecil/simbal Batak) */
-export function scheduleHesek(time, velocity = 0.6) {
+export function scheduleHesek(time, velocity = 0.6, rate = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.05, Math.min(1.0, velocity));
 
@@ -697,7 +700,7 @@ export function scheduleHesek(time, velocity = 0.6) {
   for (let i = 0; i < freqs.length; i++) {
     const osc = ac.createOscillator();
     osc.type  = 'sine';
-    osc.frequency.value = freqs[i];
+    osc.frequency.value = fr(freqs[i], rate);
     const g   = ac.createGain();
     g.gain.setValueAtTime(vel * amps[i], time);
     g.gain.exponentialRampToValueAtTime(0.001, time + decays[i]);
@@ -723,7 +726,7 @@ export function scheduleHesek(time, velocity = 0.6) {
 }
 
 /** Gordang — gendang besar seremonial Batak, bunyi booming dalam */
-export function scheduleGordang(time, velocity = 1.0) {
+export function scheduleGordang(time, velocity = 1.0, rate = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
@@ -733,8 +736,8 @@ export function scheduleGordang(time, velocity = 1.0) {
   // Sub boom utama — sangat dalam
   const sub = ac.createOscillator();
   sub.type  = 'sine';
-  sub.frequency.setValueAtTime(95, time);
-  sub.frequency.exponentialRampToValueAtTime(42, time + 0.5);
+  sub.frequency.setValueAtTime(fr(95, rate), time);
+  sub.frequency.exponentialRampToValueAtTime(fr(42, rate), time + 0.5);
   const subG = ac.createGain();
   subG.gain.setValueAtTime(vel * 0.9, time);
   subG.gain.exponentialRampToValueAtTime(0.001, time + 0.75);
@@ -747,8 +750,8 @@ export function scheduleGordang(time, velocity = 1.0) {
   // Pukulan — transient keras kayu mallet pada kulit
   const punch = ac.createOscillator();
   punch.type  = 'triangle';
-  punch.frequency.setValueAtTime(200, time);
-  punch.frequency.exponentialRampToValueAtTime(60, time + 0.04);
+  punch.frequency.setValueAtTime(fr(200, rate), time);
+  punch.frequency.exponentialRampToValueAtTime(fr(60, rate), time + 0.04);
   const punchG = ac.createGain();
   punchG.gain.setValueAtTime(vel * 0.7, time);
   punchG.gain.exponentialRampToValueAtTime(0.001, time + 0.055);
@@ -918,12 +921,12 @@ function makeDistCurve(amount) {
 // ════════════════════════════════════════════════════════════════
 
 // ── Tom (Floor Tom) ───────────────────────────────────────────
-export function scheduleTom(time, velocity = 1.0) {
+export function scheduleTom(time, velocity = 1.0, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
   const master = ac.createGain(); master.connect(ac.destination);
   const osc = ac.createOscillator(); osc.type = 'sine';
-  osc.frequency.setValueAtTime(180, time);
-  osc.frequency.exponentialRampToValueAtTime(75, time + 0.25);
+  osc.frequency.setValueAtTime(fr(180, rate), time);
+  osc.frequency.exponentialRampToValueAtTime(fr(75, rate), time + 0.25);
   const env = ac.createGain();
   env.gain.setValueAtTime(vel * 0.85, time);
   env.gain.exponentialRampToValueAtTime(0.001, time + 0.45);
@@ -931,8 +934,8 @@ export function scheduleTom(time, velocity = 1.0) {
   osc.connect(lp); lp.connect(env); env.connect(master);
   // Click transient
   const click = ac.createOscillator(); click.type = 'triangle';
-  click.frequency.setValueAtTime(600, time);
-  click.frequency.exponentialRampToValueAtTime(200, time + 0.015);
+  click.frequency.setValueAtTime(fr(600, rate), time);
+  click.frequency.exponentialRampToValueAtTime(fr(200, rate), time + 0.015);
   const cg = ac.createGain();
   cg.gain.setValueAtTime(vel * 0.4, time);
   cg.gain.exponentialRampToValueAtTime(0.001, time + 0.018);
@@ -943,7 +946,7 @@ export function scheduleTom(time, velocity = 1.0) {
 }
 
 // ── Cymbal / Crash ─────────────────────────────────────────────
-export function scheduleCymbal(time, velocity = 0.7) {
+export function scheduleCymbal(time, velocity = 0.7, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.05, Math.min(1.0, velocity));
   const freqs = [285, 318, 399, 514, 646, 1000, 1400, 1800];
   const master = ac.createGain();
@@ -953,7 +956,7 @@ export function scheduleCymbal(time, velocity = 0.7) {
   const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 5000;
   const nodes = [master, hp];
   for (const f of freqs) {
-    const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = f;
+    const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = fr(f, rate);
     o.connect(hp); hp.connect(master);
     o.start(time); o.stop(time + 1.65);
     nodes.push(o);
@@ -971,7 +974,7 @@ export function scheduleCymbal(time, velocity = 0.7) {
 }
 
 // ── Tambourine ─────────────────────────────────────────────────
-export function scheduleTambourine(time, velocity = 0.6) {
+export function scheduleTambourine(time, velocity = 0.6, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.05, Math.min(1.0, velocity));
   const master = ac.createGain(); master.connect(ac.destination);
   const nodes = [master];
@@ -979,7 +982,7 @@ export function scheduleTambourine(time, velocity = 0.6) {
   for (let i = 0; i < 4; i++) {
     const t = time + i * 0.008;
     const o = ac.createOscillator(); o.type = 'sine';
-    o.frequency.value = 4800 + i * 700;
+    o.frequency.value = fr(4800 + i * 700, rate);
     const g = ac.createGain();
     g.gain.setValueAtTime(vel * 0.18, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
@@ -1000,7 +1003,7 @@ export function scheduleTambourine(time, velocity = 0.6) {
 }
 
 // ── Cowbell ────────────────────────────────────────────────────
-export function scheduleCowbell(time, velocity = 0.7) {
+export function scheduleCowbell(time, velocity = 0.7, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
   const master = ac.createGain(); master.connect(ac.destination);
   const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 800; bp.Q.value = 1.2;
@@ -1008,8 +1011,8 @@ export function scheduleCowbell(time, velocity = 0.7) {
   env.gain.setValueAtTime(vel * 0.7, time);
   env.gain.exponentialRampToValueAtTime(0.001, time + 0.85);
   bp.connect(env); env.connect(master);
-  const o1 = ac.createOscillator(); o1.type = 'square'; o1.frequency.value = 562;
-  const o2 = ac.createOscillator(); o2.type = 'square'; o2.frequency.value = 845;
+  const o1 = ac.createOscillator(); o1.type = 'square'; o1.frequency.value = fr(562, rate);
+  const o2 = ac.createOscillator(); o2.type = 'square'; o2.frequency.value = fr(845, rate);
   o1.connect(bp); o2.connect(bp);
   o1.start(time); o1.stop(time + 0.9);
   o2.start(time); o2.stop(time + 0.9);
@@ -1018,21 +1021,21 @@ export function scheduleCowbell(time, velocity = 0.7) {
 
 // ── Kendang (Jawa/Sunda) ───────────────────────────────────────
 // Dua karakter: "tak" (kering, tinggi) + "dung" (dalam, panjang)
-export function scheduleKendang(time, velocity = 1.0) {
+export function scheduleKendang(time, velocity = 1.0, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
   const master = ac.createGain(); master.connect(ac.destination);
   // Dung — badan rendah
   const dung = ac.createOscillator(); dung.type = 'sine';
-  dung.frequency.setValueAtTime(140, time);
-  dung.frequency.exponentialRampToValueAtTime(65, time + 0.35);
+  dung.frequency.setValueAtTime(fr(140, rate), time);
+  dung.frequency.exponentialRampToValueAtTime(fr(65, rate), time + 0.35);
   const dg = ac.createGain();
   dg.gain.setValueAtTime(vel * 0.75, time);
   dg.gain.exponentialRampToValueAtTime(0.001, time + 0.55);
   dung.connect(dg); dg.connect(master);
   // Tak — pukulan tangan depan, kering
   const tak = ac.createOscillator(); tak.type = 'triangle';
-  tak.frequency.setValueAtTime(520, time);
-  tak.frequency.exponentialRampToValueAtTime(280, time + 0.02);
+  tak.frequency.setValueAtTime(fr(520, rate), time);
+  tak.frequency.exponentialRampToValueAtTime(fr(280, rate), time + 0.02);
   const tg = ac.createGain();
   tg.gain.setValueAtTime(vel * 0.5, time);
   tg.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
@@ -1054,13 +1057,13 @@ export function scheduleKendang(time, velocity = 1.0) {
 
 // ── Rebana (Melayu/Nusantara) ──────────────────────────────────
 // Frame drum dengan kepingan logam, bunyi "tak" kering + jingle
-export function scheduleRebana(time, velocity = 0.9) {
+export function scheduleRebana(time, velocity = 0.9, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
   const master = ac.createGain(); master.connect(ac.destination);
   // Badan drum
   const body = ac.createOscillator(); body.type = 'sine';
-  body.frequency.setValueAtTime(220, time);
-  body.frequency.exponentialRampToValueAtTime(110, time + 0.12);
+  body.frequency.setValueAtTime(fr(220, rate), time);
+  body.frequency.exponentialRampToValueAtTime(fr(110, rate), time + 0.12);
   const bg = ac.createGain();
   bg.gain.setValueAtTime(vel * 0.6, time);
   bg.gain.exponentialRampToValueAtTime(0.001, time + 0.22);
@@ -1068,7 +1071,7 @@ export function scheduleRebana(time, velocity = 0.9) {
   // Jingle logam
   for (let i = 0; i < 3; i++) {
     const o = ac.createOscillator(); o.type = 'sine';
-    o.frequency.value = 3500 + i * 800;
+    o.frequency.value = fr(3500 + i * 800, rate);
     const g = ac.createGain();
     g.gain.setValueAtTime(vel * 0.12, time + i * 0.005);
     g.gain.exponentialRampToValueAtTime(0.001, time + 0.08 + i * 0.02);
@@ -1090,14 +1093,14 @@ export function scheduleRebana(time, velocity = 0.9) {
 
 // ── Bedug (Gendang Besar Masjid/Pesantren) ─────────────────────
 // Bunyi booming dalam, lebih bulat dan panjang dari gordang
-export function scheduleBedug(time, velocity = 1.0) {
+export function scheduleBedug(time, velocity = 1.0, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
   const { comp } = getSynthChain(ac);
   const master = ac.createGain(); master.connect(comp);
   // Sub boom panjang
   const sub = ac.createOscillator(); sub.type = 'sine';
-  sub.frequency.setValueAtTime(65, time);
-  sub.frequency.exponentialRampToValueAtTime(38, time + 0.8);
+  sub.frequency.setValueAtTime(fr(65, rate), time);
+  sub.frequency.exponentialRampToValueAtTime(fr(38, rate), time + 0.8);
   const sg = ac.createGain();
   sg.gain.setValueAtTime(vel * 1.0, time);
   sg.gain.exponentialRampToValueAtTime(0.001, time + 1.4);
@@ -1105,16 +1108,16 @@ export function scheduleBedug(time, velocity = 1.0) {
   sub.connect(slp); slp.connect(sg); sg.connect(master);
   // Second harmonic warm
   const body = ac.createOscillator(); body.type = 'sine';
-  body.frequency.setValueAtTime(130, time);
-  body.frequency.exponentialRampToValueAtTime(80, time + 0.4);
+  body.frequency.setValueAtTime(fr(130, rate), time);
+  body.frequency.exponentialRampToValueAtTime(fr(80, rate), time + 0.4);
   const bg = ac.createGain();
   bg.gain.setValueAtTime(vel * 0.4, time);
   bg.gain.exponentialRampToValueAtTime(0.001, time + 0.7);
   body.connect(bg); bg.connect(master);
   // Pukulan kayu
   const punch = ac.createOscillator(); punch.type = 'triangle';
-  punch.frequency.setValueAtTime(180, time);
-  punch.frequency.exponentialRampToValueAtTime(50, time + 0.05);
+  punch.frequency.setValueAtTime(fr(180, rate), time);
+  punch.frequency.exponentialRampToValueAtTime(fr(50, rate), time + 0.05);
   const pg = ac.createGain();
   pg.gain.setValueAtTime(vel * 0.6, time);
   pg.gain.exponentialRampToValueAtTime(0.001, time + 0.07);
@@ -1126,12 +1129,12 @@ export function scheduleBedug(time, velocity = 1.0) {
 }
 
 // ── Conga (Latin) ──────────────────────────────────────────────
-export function scheduleConga(time, velocity = 0.9) {
+export function scheduleConga(time, velocity = 0.9, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
   const master = ac.createGain(); master.connect(ac.destination);
   const osc = ac.createOscillator(); osc.type = 'sine';
-  osc.frequency.setValueAtTime(320, time);
-  osc.frequency.exponentialRampToValueAtTime(180, time + 0.18);
+  osc.frequency.setValueAtTime(fr(320, rate), time);
+  osc.frequency.exponentialRampToValueAtTime(fr(180, rate), time + 0.18);
   const env = ac.createGain();
   env.gain.setValueAtTime(vel * 0.8, time);
   env.gain.exponentialRampToValueAtTime(0.001, time + 0.35);
@@ -1139,8 +1142,8 @@ export function scheduleConga(time, velocity = 0.9) {
   osc.connect(lp); lp.connect(env); env.connect(master);
   // Slap transient
   const slap = ac.createOscillator(); slap.type = 'square';
-  slap.frequency.setValueAtTime(800, time);
-  slap.frequency.exponentialRampToValueAtTime(350, time + 0.018);
+  slap.frequency.setValueAtTime(fr(800, rate), time);
+  slap.frequency.exponentialRampToValueAtTime(fr(350, rate), time + 0.018);
   const sg = ac.createGain();
   sg.gain.setValueAtTime(vel * 0.35, time);
   sg.gain.exponentialRampToValueAtTime(0.001, time + 0.022);
@@ -1152,21 +1155,21 @@ export function scheduleConga(time, velocity = 0.9) {
 }
 
 // ── Bongo (Latin) ──────────────────────────────────────────────
-export function scheduleBongo(time, velocity = 0.8) {
+export function scheduleBongo(time, velocity = 0.8, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
   const master = ac.createGain(); master.connect(ac.destination);
   // High bongo
   const hi = ac.createOscillator(); hi.type = 'sine';
-  hi.frequency.setValueAtTime(480, time);
-  hi.frequency.exponentialRampToValueAtTime(320, time + 0.08);
+  hi.frequency.setValueAtTime(fr(480, rate), time);
+  hi.frequency.exponentialRampToValueAtTime(fr(320, rate), time + 0.08);
   const hg = ac.createGain();
   hg.gain.setValueAtTime(vel * 0.7, time);
   hg.gain.exponentialRampToValueAtTime(0.001, time + 0.18);
   hi.connect(hg); hg.connect(master);
   // Low bongo (slight offset)
   const lo = ac.createOscillator(); lo.type = 'sine';
-  lo.frequency.setValueAtTime(310, time + 0.005);
-  lo.frequency.exponentialRampToValueAtTime(210, time + 0.12);
+  lo.frequency.setValueAtTime(fr(310, rate), time + 0.005);
+  lo.frequency.exponentialRampToValueAtTime(fr(210, rate), time + 0.12);
   const lg = ac.createGain();
   lg.gain.setValueAtTime(vel * 0.55, time + 0.005);
   lg.gain.exponentialRampToValueAtTime(0.001, time + 0.25);
@@ -1177,7 +1180,7 @@ export function scheduleBongo(time, velocity = 0.8) {
 }
 
 // ── 808 Kick (Electronic) ──────────────────────────────────────
-export function scheduleKick808(time, velocity = 1.0) {
+export function scheduleKick808(time, velocity = 1.0, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
   const { comp } = getSynthChain(ac);
   const master = ac.createGain(); master.connect(comp);
@@ -1186,16 +1189,16 @@ export function scheduleKick808(time, velocity = 1.0) {
   master.connect(dist); dist.connect(lp); lp.connect(comp);
   // 808 sub — pitch sweep sangat panjang
   const osc = ac.createOscillator(); osc.type = 'sine';
-  osc.frequency.setValueAtTime(200, time);
-  osc.frequency.exponentialRampToValueAtTime(32, time + 0.7);
+  osc.frequency.setValueAtTime(fr(200, rate), time);
+  osc.frequency.exponentialRampToValueAtTime(fr(32, rate), time + 0.7);
   const env = ac.createGain();
   env.gain.setValueAtTime(vel * 1.0, time);
   env.gain.exponentialRampToValueAtTime(0.001, time + 0.9);
   osc.connect(env); env.connect(master);
   // Click transient keras
   const click = ac.createOscillator(); click.type = 'square';
-  click.frequency.setValueAtTime(1200, time);
-  click.frequency.exponentialRampToValueAtTime(80, time + 0.025);
+  click.frequency.setValueAtTime(fr(1200, rate), time);
+  click.frequency.exponentialRampToValueAtTime(fr(80, rate), time + 0.025);
   const cg = ac.createGain();
   cg.gain.setValueAtTime(vel * 0.4, time);
   cg.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
@@ -1206,7 +1209,7 @@ export function scheduleKick808(time, velocity = 1.0) {
 }
 
 // ── Electronic Snare (808 Snare) ───────────────────────────────
-export function scheduleElecSnare(time, velocity = 1.0) {
+export function scheduleElecSnare(time, velocity = 1.0, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
   const master = ac.createGain(); master.connect(ac.destination);
   // Noise burst elektronik
@@ -1220,7 +1223,7 @@ export function scheduleElecSnare(time, velocity = 1.0) {
   noise.connect(hp); hp.connect(bp); bp.connect(ng); ng.connect(master);
   // Tone elektronik (pitch flat, bukan sweep seperti acoustic snare)
   const body = ac.createOscillator(); body.type = 'triangle';
-  body.frequency.value = 220;
+  body.frequency.value = fr(220, rate);
   const bg = ac.createGain();
   bg.gain.setValueAtTime(vel * 0.35, time);
   bg.gain.exponentialRampToValueAtTime(0.001, time + 0.06);
@@ -1244,12 +1247,13 @@ async function _loadWav(url) {
   return buf;
 }
 
-export function scheduleWav(url, time, velocity = 1.0) {
+export function scheduleWav(url, time, velocity = 1.0, rate = 1.0) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
   _loadWav(url).then(buf => {
     const src  = ac.createBufferSource();
     src.buffer = buf;
+    src.playbackRate.value = Math.max(0.25, Math.min(4.0, rate || 1.0));
     const gain = ac.createGain();
     gain.gain.value = vel * 0.85;
     src.connect(gain); gain.connect(ac.destination);

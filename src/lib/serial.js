@@ -34,6 +34,10 @@ export const btnEvent = writable({ btn: '', ts: 0 });   // btn: 'NAV' atau 'SEL'
 // sel = sensor yang dipilih (0–7), bpm = nilai potensio (40–200)
 export const bpmCtrl = writable({ sel: 0, bpm: 120 });
 
+// ── Pitch control dari potensio + button PITCHNAV ──────────────
+// sel = sensor yang dipilih (0–7), pitch = semitone (-12..+12)
+export const pitchCtrl = writable({ sel: 0, pitch: 0 });
+
 export const plotBuf = Array.from({ length: 8 }, () => ({
   adc: new Array(MAX_POINTS).fill(0),
   dev: new Array(MAX_POINTS).fill(0),
@@ -56,7 +60,8 @@ const RX_DATA    = new RegExp('HALL8' + D.repeat(24));
 const RX_THR     = /\[THRESH(\d+)\]\s*(\d+)\|(\d+)\|(\d+)\|(\d+)/;
 const RX_BASE    = /\[(?:AUTO|CAL|INIT)\s*S(\d+)\].*?(\d+)\s*$/;
 const RX_BTN     = /\[BTN\](NAV|SEL)/;
-const RX_BPMCTRL = /\[BPMCTRL\](\d+)\|(\d+)/;
+const RX_BPMCTRL   = /\[BPMCTRL\](\d+)\|(\d+)/;
+const RX_PITCHCTRL = /\[PITCHCTRL\](\d+)\|(-?\d+)/;
 
 // ── State ───────────────────────────────────────────────────────
 let _port = null, _reader = null, _running = false, _lineBuf = '';
@@ -113,7 +118,9 @@ function parseLine(raw) {
   m = RX_BTN.exec(line);
   if (m) { btnEvent.set({ btn: m[1], ts: Date.now() }); return; }
   m = RX_BPMCTRL.exec(line);
-  if (m) { bpmCtrl.set({ sel: +m[1], bpm: +m[2] }); }
+  if (m) { bpmCtrl.set({ sel: +m[1], bpm: +m[2] }); return; }
+  m = RX_PITCHCTRL.exec(line);
+  if (m) { pitchCtrl.set({ sel: +m[1], pitch: +m[2] }); }
 }
 
 async function readLoop() {
