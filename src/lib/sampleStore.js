@@ -299,42 +299,42 @@ export const SAMPLES = [
 // ── Fungsi instrument (digunakan oleh beat sequencer) ────────────
 export const SAMPLE_FNS = {
   // Western
-  kick:        (t, v) => scheduleKick(t, v),
-  snare:       (t, v) => scheduleSnare(t, v),
-  hihat:       (t, v) => scheduleHihat(t, v, false),
-  clap:        (t, v) => scheduleClap(t, v),
-  rim:         (t, v) => scheduleRim(t, v),
-  tom:         (t, v) => scheduleTom(t, v),
-  cymbal:      (t, v) => scheduleCymbal(t, v),
-  tambourine:  (t, v) => scheduleTambourine(t, v),
-  cowbell:     (t, v) => scheduleCowbell(t, v),
+  kick:        (t, v, r = 1.0) => scheduleKick(t, v, r),
+  snare:       (t, v, r = 1.0) => scheduleSnare(t, v, r),
+  hihat:       (t, v, r = 1.0) => scheduleHihat(t, v, false, r),
+  clap:        (t, v, r = 1.0) => scheduleClap(t, v, r),
+  rim:         (t, v, r = 1.0) => scheduleRim(t, v, r),
+  tom:         (t, v, r = 1.0) => scheduleTom(t, v, r),
+  cymbal:      (t, v, r = 1.0) => scheduleCymbal(t, v, r),
+  tambourine:  (t, v, r = 1.0) => scheduleTambourine(t, v, r),
+  cowbell:     (t, v, r = 1.0) => scheduleCowbell(t, v, r),
   // Nusantara
-  taganing:    (t, v) => scheduleTaganing(t, v),
-  odap:        (t, v) => scheduleOdap(t, v),
-  hesek:       (t, v) => scheduleHesek(t, v),
-  gordang:     (t, v) => scheduleGordang(t, v),
-  kendang:     (t, v) => scheduleKendang(t, v),
-  rebana:      (t, v) => scheduleRebana(t, v),
-  bedug:       (t, v) => scheduleBedug(t, v),
+  taganing:    (t, v, r = 1.0) => scheduleTaganing(t, v, r),
+  odap:        (t, v, r = 1.0) => scheduleOdap(t, v, r),
+  hesek:       (t, v, r = 1.0) => scheduleHesek(t, v, r),
+  gordang:     (t, v, r = 1.0) => scheduleGordang(t, v, r),
+  kendang:     (t, v, r = 1.0) => scheduleKendang(t, v, r),
+  rebana:      (t, v, r = 1.0) => scheduleRebana(t, v, r),
+  bedug:       (t, v, r = 1.0) => scheduleBedug(t, v, r),
   // Latin
-  conga:       (t, v) => scheduleConga(t, v),
-  bongo:       (t, v) => scheduleBongo(t, v),
+  conga:       (t, v, r = 1.0) => scheduleConga(t, v, r),
+  bongo:       (t, v, r = 1.0) => scheduleBongo(t, v, r),
   // Electronic
-  kick808:     (t, v) => scheduleKick808(t, v),
-  esnare:      (t, v) => scheduleElecSnare(t, v),
-  // Synth
-  syn_c3:      (t, v) => scheduleSynth(130.81, t, v),
-  syn_e3:      (t, v) => scheduleSynth(164.81, t, v),
-  syn_g3:      (t, v) => scheduleSynth(196.00, t, v),
-  syn_a3:      (t, v) => scheduleSynth(220.00, t, v),
-  syn_c4:      (t, v) => scheduleSynth(261.63, t, v),
-  // Hasapi
-  has_d4:      (t, v) => scheduleHasapi(293.66, t, v),
-  has_e4:      (t, v) => scheduleHasapi(329.63, t, v),
-  has_g4:      (t, v) => scheduleHasapi(392.00, t, v),
-  has_a4:      (t, v) => scheduleHasapi(440.00, t, v),
+  kick808:     (t, v, r = 1.0) => scheduleKick808(t, v, r),
+  esnare:      (t, v, r = 1.0) => scheduleElecSnare(t, v, r),
+  // Synth — multiply freq by rate untuk pitch shift
+  syn_c3:      (t, v, r = 1.0) => scheduleSynth(130.81 * (r || 1), t, v),
+  syn_e3:      (t, v, r = 1.0) => scheduleSynth(164.81 * (r || 1), t, v),
+  syn_g3:      (t, v, r = 1.0) => scheduleSynth(196.00 * (r || 1), t, v),
+  syn_a3:      (t, v, r = 1.0) => scheduleSynth(220.00 * (r || 1), t, v),
+  syn_c4:      (t, v, r = 1.0) => scheduleSynth(261.63 * (r || 1), t, v),
+  // Hasapi — multiply freq by rate untuk pitch shift
+  has_d4:      (t, v, r = 1.0) => scheduleHasapi(293.66 * (r || 1), t, v),
+  has_e4:      (t, v, r = 1.0) => scheduleHasapi(329.63 * (r || 1), t, v),
+  has_g4:      (t, v, r = 1.0) => scheduleHasapi(392.00 * (r || 1), t, v),
+  has_a4:      (t, v, r = 1.0) => scheduleHasapi(440.00 * (r || 1), t, v),
   // WAV
-  percusion1:  (t, v) => scheduleWav(`/esp32-drum-monitor/samples/percusion123.wav`, t, v),
+  percusion1:  (t, v, r = 1.0) => scheduleWav(`/esp32-drum-monitor/samples/percusion123.wav`, t, v, r),
 };
 
 // ── Persistence ─────────────────────────────────────────────────
