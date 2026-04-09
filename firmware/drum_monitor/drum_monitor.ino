@@ -54,9 +54,9 @@ inline int16_t readSensor(int s) {
 
 // ── Sensor config ──────────────────────────────────────────────
 #define NUM_SENSORS          8
-#define SAMPLES_BASELINE     200        // lebih banyak sample = baseline lebih tepat
+#define SAMPLES_BASELINE     50         // 50 sample × 3ms = 150ms per sensor, cukup untuk median
 #define DEBOUNCE_MS          80
-#define BASELINE_INTERVAL_MS 30000UL    // 30 saat — recal bila semua sensor idle
+#define BASELINE_INTERVAL_MS 5000UL     // 5 saat — auto-recal lebih kerap
 
 // Output ke serial tiap 20ms (50Hz), baca sensor tiap 2ms (500Hz)
 #define SERIAL_INTERVAL_MS   20
@@ -64,24 +64,35 @@ inline int16_t readSensor(int s) {
 
 // S1–S4: ADS1015 (1mV/count @ GAIN_TWO) — minimum threshold
 // S5–S8: ADS1115 (0.0625mV/count @ GAIN_TWO) — minimum threshold
+// Threshold dioptimakan: L1 diturunkan untuk sensitifitas lebih baik
+// ADS1015 (S1–S4): 2mV/count  → L1=50mV, L2=100mV, L3=200mV, L4=400mV
+// ADS1115 (S5–S8): 0.125mV/count → ×16 dari S1–S4
 int thresh[NUM_SENSORS][4] = {
-  {10,  25,  60,  120},     // S1
-  {10,  25,  60,  120},     // S2
-  {10,  25,  60,  120},     // S3
-  {10,  25,  60,  120},     // S4
-  {80,  200, 600, 1200},    // S5
-  {80,  200, 600, 1200},    // S6
-  {80,  200, 600, 1200},    // S7
-  {80,  200, 600, 1200},    // S8
+  {25,   50,   100,  200},    // S1  (50 / 100 / 200 / 400 mV)
+  {25,   50,   100,  200},    // S2
+  {25,   50,   100,  200},    // S3
+  {25,   50,   100,  200},    // S4
+  {400,  800,  1600, 2500},   // S5  — S5 max=8409, mudah capai led=4
+  {400,  800,  1600, 2500},   // S6  — S6 max=2685, kini capai led=4
+  {400,  800,  1600, 2500},   // S7  — S7 max=3123, kini capai led=4
+  {400,  800,  1600, 2500},   // S8
 };
 
 int16_t baseline[NUM_SENSORS] = {0};
 bool    baselineDone           = false;
 unsigned long lastBaselineTime = 0;
 
-// ── Peak detection state ───────────────────────────────────────
-int16_t peakAdc[NUM_SENSORS] = {0};
-int16_t peakDev[NUM_SENSORS] = {0};
+// ── EMA filter + adaptive baseline ────────────────────────────
+// EMA halus spike noise jangka pendek; adaptive baseline koreksi drift perlahan
+float emaAdc[NUM_SENSORS];        // ADC selepas EMA filter
+float fBaseline[NUM_SENSORS];     // baseline float untuk adaptive correction
+// alpha lebih besar = respons lebih pantas, atenuasi kurang
+// S8 (ADS1115 A3) lebih noise — alpha lebih kecil
+const float EMA_ALPHA_ARR[NUM_SENSORS] = {
+  0.50f, 0.50f, 0.50f, 0.50f,   // S1–S4 (alpha 0.5 → ~4ms time constant)
+  0.50f, 0.50f, 0.50f, 0.15f    // S5–S7, S8 (alpha 0.15 → ~13ms)
+};
+#define BASE_ADAPT 0.002f         // drift correction ~1 second time constant
 
 // ── Hysteresis counter (cegah cross-trigger antara sensor) ────
 // LED hanya aktif bila devasi kekal > threshold 2 frame berturut-turut (40ms)
@@ -90,6 +101,11 @@ uint8_t hitConfirm[NUM_SENSORS] = {0};   // frame counter naik
 uint8_t idleConfirm[NUM_SENSORS] = {0};  // frame counter turun
 int     ledState[NUM_SENSORS]    = {0};  // LED state selepas hysteresis
 #define CONFIRM_FRAMES 2
+
+// ── Stuck sensor detection ─────────────────────────────────────
+// Jika sensor aktif berterusan >8 saat, paksa recalibrate semula
+unsigned long ledOnTime[NUM_SENSORS] = {0};  // masa mula sensor jadi aktif
+#define STUCK_DETECT_MS 2000UL
 
 // ── Debounce state ─────────────────────────────────────────────
 bool          prevBtnNav      = HIGH;
@@ -130,6 +146,10 @@ void setup() {
   pinMode(BTN_PITCHNAV, INPUT_PULLUP);
 
   Wire.begin();
+
+  // Tunggu sensor stabil — jauhkan semua magnet sebelum kalibrasi
+  Serial.println("[BOOT] Tunggu sensor stabil (2 saat)... JAUHKAN SEMUA MAGNET!");
+  delay(2000);
 
   // ADS1015 @ 0x48
   if (!ads1.begin(0x48)) {
@@ -179,22 +199,43 @@ void sortArr(int16_t* arr, int n) {
       if (arr[j] < arr[i]) { int16_t t = arr[i]; arr[i] = arr[j]; arr[j] = t; }
 }
 
-// ── Calibrate baseline (median filter) ────────────────────────
-// Median lebih tahan outlier berbanding average
-void calibrateBaseline() {
-  Serial.println("[CAL] Mengambil baseline...");
+// ── Calibrate satu sensor (median 50 sample) ──────────────────
+void calibrateOne(int s) {
   int16_t buf[SAMPLES_BASELINE];
-  for (int s = 0; s < NUM_SENSORS; s++) {
-    for (int n = 0; n < SAMPLES_BASELINE; n++) {
-      buf[n] = readSensor(s);
-      delay(2);
+  for (int n = 0; n < SAMPLES_BASELINE; n++) { buf[n] = readSensor(s); delay(3); }
+  sortArr(buf, SAMPLES_BASELINE);
+  baseline[s]  = buf[SAMPLES_BASELINE / 2];
+  emaAdc[s]    = (float)baseline[s];
+  fBaseline[s] = (float)baseline[s];
+  hitConfirm[s] = 0; idleConfirm[s] = 0; ledState[s] = 0; ledOnTime[s] = 0;
+  Serial.printf("[INIT S%d] baseline=%d\n", s+1, baseline[s]);
+}
+
+// ── Calibrate baseline dengan validate + retry ─────────────────
+// Selepas ambil baseline, semak semua sensor stabil.
+// Jika ada sensor tidak stabil (magnet terlalu dekat), recal semula.
+void calibrateBaseline() {
+  Serial.println("[CAL] Kalibrasi semua sensor...");
+  for (int s = 0; s < NUM_SENSORS; s++) calibrateOne(s);
+
+  // Validate — bagi EMA masa settle, kemudian semak devasi
+  for (int retry = 0; retry < 3; retry++) {
+    delay(400);
+    bool allStable = true;
+    for (int s = 0; s < NUM_SENSORS; s++) {
+      int16_t v   = readSensor(s);
+      int16_t dev = v - baseline[s];
+      if (abs(dev) > thresh[s][0]) {
+        Serial.printf("[CAL] S%d tidak stabil (dev=%d) — recal...\n", s+1, dev);
+        delay(300);
+        calibrateOne(s);
+        allStable = false;
+      }
     }
-    sortArr(buf, SAMPLES_BASELINE);
-    baseline[s] = buf[SAMPLES_BASELINE / 2];   // median
-    peakAdc[s]  = baseline[s];
-    peakDev[s]  = 0;
-    Serial.printf("[INIT S%d] baseline=%d\n", s+1, baseline[s]);
+    if (allStable) { Serial.println("[CAL] Semua sensor stabil."); break; }
+    if (retry == 2) Serial.println("[CAL] Amaran: ada sensor mungkin masih tidak stabil.");
   }
+
   baselineDone = true;
   lastBaselineTime = millis();
   Serial.println("[CAL] Selesai.");
@@ -309,18 +350,22 @@ void loop() {
   // 1. Poll button dulu (sebelum I2C)
   pollButtons();
 
-  // 2. Baca sensor tiap 2ms — peak detection sahaja
-  // Baseline TIDAK diupdate di sini — rolling baseline menyebabkan baseline
-  // drift ke posisi magnet → bila magnet diangkat, abs(dev) besar → bunyi lengket
-  // Baseline diurus oleh: calibrateBaseline() at boot + auto-recal 5 minit
+  // 2. Baca sensor tiap 2ms — EMA filter + adaptive baseline
+  // EMA alpha=0.10: spike < 10ms ditolak (~90% attenuasi pada 1 sample)
+  // Adaptive baseline: hanya update bila sensor dalam zon rehat (abs(dev) < thresh[0])
+  //   → baseline perlahan ikut drift suhu/supply tanpa terjejas oleh magnet
   if (now - lastSampleTime >= SAMPLE_INTERVAL_MS) {
     lastSampleTime = now;
     for (int s = 0; s < NUM_SENSORS; s++) {
-      int16_t adc = readSensor(s);
-      int16_t dev = adc - baseline[s];
-      if (abs(dev) > abs(peakDev[s])) {
-        peakAdc[s] = adc;
-        peakDev[s] = dev;
+      float raw = (float)readSensor(s);
+      emaAdc[s] = EMA_ALPHA_ARR[s] * raw + (1.0f - EMA_ALPHA_ARR[s]) * emaAdc[s];
+      float dev = emaAdc[s] - fBaseline[s];
+      // Adaptive baseline — update sehingga L2 (bukan hanya L1)
+      // Ini membolehkan koreksi baseline error kecil dari boot calibration
+      // tanpa menunggu STUCK detection
+      if (fabsf(dev) < (float)thresh[s][1]) {
+        fBaseline[s] += BASE_ADAPT * dev;
+        baseline[s]   = (int16_t)fBaseline[s];
       }
     }
   }
@@ -329,9 +374,11 @@ void loop() {
   if (now - lastSerialTime >= SERIAL_INTERVAL_MS) {
     lastSerialTime = now;
 
+    int16_t curDev[NUM_SENSORS];
     int led[NUM_SENSORS];
     for (int s = 0; s < NUM_SENSORS; s++) {
-      int raw = computeLed(s, peakDev[s]);
+      curDev[s] = (int16_t)(emaAdc[s] - fBaseline[s]);
+      int raw = computeLed(s, curDev[s]);
 
       if (raw > 0) {
         // Devasi hadir — kira frame naik
@@ -348,41 +395,48 @@ void loop() {
       led[s] = ledState[s];
     }
 
-    Serial.printf("HALL8|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d\n",
-      peakAdc[0], peakDev[0], led[0],
-      peakAdc[1], peakDev[1], led[1],
-      peakAdc[2], peakDev[2], led[2],
-      peakAdc[3], peakDev[3], led[3],
-      peakAdc[4], peakDev[4], led[4],
-      peakAdc[5], peakDev[5], led[5],
-      peakAdc[6], peakDev[6], led[6],
-      peakAdc[7], peakDev[7], led[7]);
-
-    // Reset peak selepas dihantar
+    // Stuck sensor detection — sensor stuck >8 saat → paksa recalibrate
+    // Ini selesaikan deadlock: baseline salah → dev besar → led=3 kekal
+    // allIdle tidak tercapai → auto-recal tidak jalan → baseline tidak betul
     for (int s = 0; s < NUM_SENSORS; s++) {
-      peakAdc[s] = baseline[s];
-      peakDev[s] = 0;
+      if (led[s] > 0) {
+        if (ledOnTime[s] == 0) ledOnTime[s] = now;
+        else if (now - ledOnTime[s] > STUCK_DETECT_MS) {
+          // EMA sudah converge ke nilai sebenar sensor — guna terus sebagai baseline
+          baseline[s]  = (int16_t)emaAdc[s];
+          fBaseline[s] = emaAdc[s];
+          hitConfirm[s] = 0; idleConfirm[s] = 0; ledState[s] = 0;
+          led[s] = 0; ledOnTime[s] = 0;
+          Serial.printf("[STUCK S%d] recal=%d\n", s+1, baseline[s]);
+        }
+      } else {
+        ledOnTime[s] = 0;
+      }
     }
 
-    // Auto re-calibrate bila semua sensor idle (setiap 30 saat)
-    // Ambil median 20 sample — lebih tepat dari single reading
+    Serial.printf("HALL8|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d\n",
+      (int16_t)emaAdc[0], curDev[0], led[0],
+      (int16_t)emaAdc[1], curDev[1], led[1],
+      (int16_t)emaAdc[2], curDev[2], led[2],
+      (int16_t)emaAdc[3], curDev[3], led[3],
+      (int16_t)emaAdc[4], curDev[4], led[4],
+      (int16_t)emaAdc[5], curDev[5], led[5],
+      (int16_t)emaAdc[6], curDev[6], led[6],
+      (int16_t)emaAdc[7], curDev[7], led[7]);
+
+    // Auto re-calibrate — guna EMA semasa terus, tiada blocking delay
+    // EMA sudah difilter berterusan, nilainya tepat masa sensor idle
     if (baselineDone && now - lastBaselineTime > BASELINE_INTERVAL_MS) {
-      bool allIdle = true;
-      for (int s = 0; s < NUM_SENSORS; s++)
-        if (led[s] > 0) { allIdle = false; break; }
-      if (allIdle) {
-        int16_t buf[20];
-        for (int s = 0; s < NUM_SENSORS; s++) {
-          for (int n = 0; n < 20; n++) { buf[n] = readSensor(s); delay(2); }
-          sortArr(buf, 20);
-          int16_t med = buf[10];
-          // Hanya update jika perbezaan kecil — elak lompatan besar
-          if (abs(med - baseline[s]) < 200) {
-            baseline[s] = med;
-            Serial.printf("[AUTO S%d] baseline=%d\n", s+1, baseline[s]);
-          }
+      lastBaselineTime = now;
+      for (int s = 0; s < NUM_SENSORS; s++) {
+        if (led[s] > 0) continue;  // sensor aktif — skip
+        int16_t newBase = (int16_t)emaAdc[s];
+        if (abs(newBase - baseline[s]) < 500) {
+          baseline[s]  = newBase;
+          fBaseline[s] = (float)newBase;
+          // EMA tidak direset — biar terus berjalan tanpa gangguan
+          Serial.printf("[AUTO S%d] baseline=%d\n", s+1, baseline[s]);
         }
-        lastBaselineTime = now;
       }
     }
   }

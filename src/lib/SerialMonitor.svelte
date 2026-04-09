@@ -119,6 +119,14 @@
 
   $: { filterTxt; showData; rebuildDisp(); if(autoScroll) snapBottom(); }
   function clearAll() { lines=[];dispLines=[];total=0;scrollY=0;dirty=true; }
+
+  let copyLabel = 'Copy';
+  async function copyAll() {
+    const text = dispLines.map(l => `${l.ts}  ${l.text}`).join('\n');
+    await navigator.clipboard.writeText(text);
+    copyLabel = 'Copied!';
+    setTimeout(() => copyLabel = 'Copy', 1500);
+  }
 </script>
 
 <div class="flex flex-col h-full bg-slate-950 rounded-lg overflow-hidden">
@@ -132,6 +140,7 @@
       {#if filterTxt}<button class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-600 text-xs" on:click={()=>filterTxt=''}>✕</button>{/if}
     </div>
     <span class="text-xs font-mono text-slate-700">{dispLines.length}/{total}</span>
+    <button class="text-xs px-2 py-1 bg-slate-900 border border-slate-800 rounded text-slate-600 hover:text-cyan-400" on:click={copyAll}>{copyLabel}</button>
     <button class="text-xs px-2 py-1 bg-slate-900 border border-slate-800 rounded text-slate-600 hover:text-red-400" on:click={clearAll}>🗑</button>
     <button class="text-xs px-2 py-1 rounded border {autoScroll?'bg-slate-800 border-cyan-900 text-cyan-400':'bg-slate-900 border-slate-800 text-slate-600'}"
       on:click={()=>{autoScroll=!autoScroll;if(autoScroll){snapBottom();dirty=true;}}}>{autoScroll?'⏬':'⏸'}</button>
