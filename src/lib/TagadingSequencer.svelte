@@ -74,7 +74,21 @@
     const p   = PRESETS[name];
     pattern   = TRACKS.map(t => [...(p[t.id] ?? new Array(STEPS).fill(0))]);
   }
-  loadPreset('Sidabu Petek');
+  // ── Auto-save current state ke localStorage ───────────────────
+  const _AS_KEY = 'seq_tagading_autosave';
+  function _asSave() {
+    try { localStorage.setItem(_AS_KEY, JSON.stringify({ pattern: pattern.map(t=>[...t]), vels:[...vels], bpm, selPreset })); } catch {}
+  }
+  const _asData = (() => { try { return JSON.parse(localStorage.getItem(_AS_KEY)||'null'); } catch { return null; } })();
+  if (_asData?.pattern?.length === TRACKS.length) {
+    pattern   = _asData.pattern.map(t => [...t]);
+    vels      = _asData.vels?.length === TRACKS.length ? [..._asData.vels] : vels;
+    bpm       = _asData.bpm ?? bpm;
+    selPreset = _asData.selPreset ?? selPreset;
+    pattern   = [...pattern];
+  } else {
+    loadPreset('Sidabu Petek');
+  }
 
   function toggleStep(ti, si) {
     pattern[ti][si] = pattern[ti][si] ? 0 : 1;
@@ -127,6 +141,7 @@
   function togglePlay() { playing ? stop() : start(); }
   function clearAll()   { pattern = TRACKS.map(() => new Array(STEPS).fill(0)); }
 
+  $: { pattern; vels; bpm; selPreset; _asSave(); }
   $: if (playing && bpm) { clearTimeout(_timerId); _timerId = setTimeout(scheduler, 0); }
 
   onDestroy(() => { clearTimeout(_timerId); unsubSensor(); });

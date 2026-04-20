@@ -83,7 +83,20 @@
     steps = [...p.steps];
     bpm   = p.bpm;
   }
-  loadPreset('Acid House');
+  // ── Auto-save current state ke localStorage ───────────────────
+  const _AS_KEY = 'seq_synth_autosave';
+  function _asSave() {
+    try { localStorage.setItem(_AS_KEY, JSON.stringify({ steps:[...steps], bpm, vel, selPreset })); } catch {}
+  }
+  const _asData = (() => { try { return JSON.parse(localStorage.getItem(_AS_KEY)||'null'); } catch { return null; } })();
+  if (_asData?.steps?.length === STEPS) {
+    steps     = [..._asData.steps];
+    bpm       = _asData.bpm ?? bpm;
+    vel       = _asData.vel ?? vel;
+    selPreset = _asData.selPreset ?? selPreset;
+  } else {
+    loadPreset('Acid House');
+  }
 
   // Klik = kitar off → note0 → note1 → ... → note7 → off
   function clickStep(si) {
@@ -157,6 +170,8 @@
   function togglePlay() { playing ? stop() : start(); }
 
   function clearAll() { steps = new Array(STEPS).fill(-1); }
+
+  $: { steps; bpm; vel; selPreset; _asSave(); }
 
   // Restart scheduler bila BPM tukar semasa bermain
   $: if (playing && bpm) {
