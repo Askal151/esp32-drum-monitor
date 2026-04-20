@@ -54,13 +54,13 @@ export function stopWavSources(sensorKey) {
 // ── Looping WAV untuk uploaded samples (sensor-triggered) ─────
 const _loopingWavs = new Map(); // sensorKey → { src, gain }
 
-export function startWavLoop(audioBuffer, sensorKey) {
+export function startWavLoop(audioBuffer, sensorKey, rate = 1.0) {
   stopWavLoop(sensorKey);
   const ac = getCtx();
   const src  = ac.createBufferSource();
   src.buffer = audioBuffer;
   src.loop   = true;
-  src.playbackRate.value = 1.0;
+  src.playbackRate.value = Math.max(0.1, Math.min(4.0, rate));
   const gain = ac.createGain();
   gain.gain.value = 1.0;
   src.connect(gain);
@@ -78,6 +78,12 @@ export function stopWavLoop(sensorKey) {
   try { entry.src.stop(); } catch {}
   try { entry.src.disconnect(); entry.gain.disconnect(); } catch {}
   _loopingWavs.delete(sensorKey);
+}
+
+export function updateWavLoopRate(sensorKey, rate) {
+  const entry = _loopingWavs.get(sensorKey);
+  if (!entry) return;
+  entry.src.playbackRate.value = Math.max(0.1, Math.min(4.0, rate));
 }
 
 // ── Preview player (Upload panel) ─────────────────────────────
@@ -1418,4 +1424,9 @@ export async function decodeAudioFile(file) {
   const ac  = getCtx();
   const arr = await file.arrayBuffer();
   return ac.decodeAudioData(arr);
+}
+
+export async function decodeAudioBuffer(arrayBuffer) {
+  const ac = getCtx();
+  return ac.decodeAudioData(arrayBuffer);
 }

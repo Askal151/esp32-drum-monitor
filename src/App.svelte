@@ -9,7 +9,7 @@
   import SampleAssign      from './lib/SampleAssign.svelte';
   import SamplePicker      from './lib/SamplePicker.svelte';
   import SampleUpload      from './lib/SampleUpload.svelte';
-  import { unlockAudio, isRunning, getAudioCtx, ensureRunning, stopWavSources, startWavLoop, stopWavLoop } from './lib/audio.js';
+  import { unlockAudio, isRunning, getAudioCtx, ensureRunning, stopWavSources, startWavLoop, stopWavLoop, updateWavLoopRate } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd,
@@ -72,10 +72,11 @@
     _seqNextTime[idx] = ac.currentTime + 0.05;
 
     // Uploaded WAV: loop terus tanpa step sequencer
-    const beatId0 = get(sensorSamples)[idx];
-    const beat0   = BEAT_DATA[beatId0];
+    const beatId0   = get(sensorSamples)[idx];
+    const beat0     = BEAT_DATA[beatId0];
     if (beat0?.isUpload && beat0?.buffer) {
-      startWavLoop(beat0.buffer, idx);
+      const initRate = (_sensorBpm[idx] / 120) * Math.pow(2, (_sensorPitch[idx] || 0) / 12);
+      startWavLoop(beat0.buffer, idx, initRate);
     }
 
     _seqTimers[idx] = setInterval(() => {
@@ -205,11 +206,21 @@
     if (changed) seqActive = [...seqActive];  // hanya bila ada perubahan
   });
 
+  // Update playbackRate WAV loop bila BPM/pitch berubah
+  function _updateWavLoopRate(idx) {
+    const beatId = get(sensorSamples)[idx];
+    const beat   = BEAT_DATA[beatId];
+    if (!beat?.isUpload) return;
+    const rate = (_sensorBpm[idx] / 120) * Math.pow(2, (_sensorPitch[idx] || 0) / 12);
+    updateWavLoopRate(idx, rate);
+  }
+
   // ── BPM control dari potensio + button BPMNAV ────────────────
   $: {
     const { sel, bpm: b } = $bpmCtrl;
     _sensorBpm[sel] = b;
     sensorBpm = [..._sensorBpm];
+    _updateWavLoopRate(sel);
   }
 
   function applyBpm(sel, bpm) {
@@ -217,6 +228,7 @@
     _sensorBpm[sel] = b;
     sensorBpm = [..._sensorBpm];
     bpmCtrl.set({ sel, bpm: b });
+    _updateWavLoopRate(sel);
   }
 
   // ── Pitch control dari potensio + button PITCHNAV ─────────────
@@ -224,6 +236,7 @@
     const { sel, pitch: p } = $pitchCtrl;
     _sensorPitch[sel] = p;
     sensorPitch = [..._sensorPitch];
+    _updateWavLoopRate(sel);
   }
 
   function applyPitch(sel, pitch) {
@@ -231,6 +244,7 @@
     _sensorPitch[sel] = p;
     sensorPitch = [..._sensorPitch];
     pitchCtrl.set({ sel, pitch: p });
+    _updateWavLoopRate(sel);
   }
 
   // ── Button fizikal NAV / SEL ───────────────────────────────────
