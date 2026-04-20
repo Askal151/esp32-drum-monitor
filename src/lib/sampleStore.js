@@ -26,6 +26,7 @@ import {
   scheduleKick808, scheduleElecSnare,
   scheduleSynth, scheduleHasapi,
   scheduleWav, scheduleWavBuffer, decodeAudioFile,
+  startPreviewBuffer, stopPreviewBuffer,
 } from './audio.js';
 
 // Path base untuk WAV (sesuai dengan vite base path)
@@ -390,7 +391,7 @@ const IDLE_TIMEOUT = 10000;
 let _idleTimer = null;
 function _resetTimer() {
   clearTimeout(_idleTimer);
-  _idleTimer = setTimeout(() => pickerState.set('idle'), IDLE_TIMEOUT);
+  _idleTimer = setTimeout(() => { stopPreviewBuffer(); pickerState.set('idle'); }, IDLE_TIMEOUT);
 }
 
 // ── Button NAV ───────────────────────────────────────────────────
@@ -416,9 +417,14 @@ export function btnNav(audioCtx = null) {
       try {
         const beatId = allS[nextIdx].id;
         const beat = BEAT_DATA[beatId];
-        if (beat?.isWav) {
+        if (beat?.isUpload && beat?.buffer) {
+          // Uploaded WAV — guna startPreviewBuffer supaya boleh di-stop
+          startPreviewBuffer(beat.buffer);
+        } else if (beat?.isWav && beat?.wavUrl) {
+          stopPreviewBuffer();
           scheduleWav(beat.wavUrl, audioCtx.currentTime, 0.6);
         } else if (beat?.tracks) {
+          stopPreviewBuffer();
           const firstInstr = Object.keys(beat.tracks)[0];
           if (firstInstr) SAMPLE_FNS[firstInstr]?.(audioCtx.currentTime, 0.6);
         }
@@ -443,6 +449,7 @@ export function btnSel() {
   } else if (state === 'sample') {
     // Simpan sample ke sensor, tutup picker
     saveSample(get(selectedSensor));
+    stopPreviewBuffer();
     pickerState.set('idle');
     clearTimeout(_idleTimer);
     return;
@@ -461,6 +468,7 @@ export function openPicker() {
 // ── Tutup picker ─────────────────────────────────────────────────
 export function closePicker() {
   clearTimeout(_idleTimer);
+  stopPreviewBuffer();
   pickerState.set('idle');
 }
 
