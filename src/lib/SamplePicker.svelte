@@ -10,12 +10,15 @@
     sensorSamples, selectedSensor, cursorIdx,
     pickerState, closePicker,
     saveSample, deleteSample,
+    uploadedSamples,
   } from './sampleStore.js';
 
   const SENSOR_NAMES  = ['Congkak 1','Congkak 2','Congkak 3','Congkak 4','Congkak 5','Congkak 6','Congkak 7','Congkak 8'];
   const SENSOR_ICONS  = ['🪘','🪘','🪘','🪘','🪘','🪘','🪘','🪘'];
   const SENSOR_COLORS = ['#22d3ee','#4ade80','#f59e0b','#f472b6','#a78bfa','#fb923c','#34d399','#f87171'];
-  const GROUPS = [...new Set(SAMPLES.map(s => s.group))];
+
+  $: allSamples = [...SAMPLES, ...$uploadedSamples];
+  $: GROUPS = [...new Set(allSamples.map(s => s.group))];
 
   $: visible = $pickerState !== 'idle';
 
@@ -130,7 +133,7 @@
           <div class="px-3 py-1 text-xs text-slate-700 font-bold tracking-wide uppercase sticky top-0 bg-[#080b12]">
             {group}
           </div>
-          {#each SAMPLES as sample, idx}
+          {#each allSamples as sample, idx}
             {#if sample.group === group}
               {@const isCursor = idx === $cursorIdx[$selectedSensor]}
               {@const isSaved  = $sensorSamples[$selectedSensor] === sample.id}

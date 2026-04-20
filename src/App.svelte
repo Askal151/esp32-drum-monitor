@@ -8,7 +8,8 @@
   import HasapiSequencer   from './lib/HasapiSequencer.svelte';
   import SampleAssign      from './lib/SampleAssign.svelte';
   import SamplePicker      from './lib/SamplePicker.svelte';
-  import { unlockAudio, isRunning, getAudioCtx, ensureRunning } from './lib/audio.js';
+  import SampleUpload      from './lib/SampleUpload.svelte';
+  import { unlockAudio, isRunning, getAudioCtx, ensureRunning, stopWavSources } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd,
@@ -26,6 +27,7 @@
   const NAMES = ['Congkak 1', 'Congkak 2', 'Congkak 3', 'Congkak 4', 'Congkak 5', 'Congkak 6', 'Congkak 7', 'Congkak 8'];
 
   let tab = 'drum';
+  let sampleUploadRef;
   let lastError   = '';
   let audioReady  = false;
   let audioEnabled = true;
@@ -47,10 +49,18 @@
   // Setiap sensor memainkan pola beat lengkap (16-step) dari BEAT_DATA
   // Sequencer bermula apabila LED > 0, berhenti apabila LED = 0
   let seqActive = [false, false, false, false, false, false, false, false];
-  const _seqTimers   = new Array(8).fill(null);
-  const _seqStep     = new Array(8).fill(0);
-  const _seqNextTime = new Array(8).fill(0);
-  const _seqBpm      = new Array(8).fill(120);  // BPM semasa setiap sequencer (untuk detect perubahan)
+  const _seqTimers    = new Array(8).fill(null);
+  const _seqStep      = new Array(8).fill(0);
+  const _seqNextTime  = new Array(8).fill(0);
+  const _seqBpm       = new Array(8).fill(120);  // BPM semasa setiap sequencer (untuk detect perubahan)
+  const _manualPlaying = new Array(8).fill(false); // dibaca dalam closure setInterval
+  let   manualPads     = [..._manualPlaying];      // reactive copy untuk template
+  let   manualPlayActive = false;
+
+  function _setManualPad(idx, val) {
+    _manualPlaying[idx] = val;
+    manualPads = [..._manualPlaying]; // trigger Svelte reactivity
+  }
 
   const SEQ_TICK_MS   = 25;
   const SEQ_LOOKAHEAD = 0.1;  // saat lookahead Web Audio
@@ -70,7 +80,7 @@
       if (!beatId) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
 
       const s = get(sensors)[idx];
-      if (s.led === 0) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
+      if (s.led === 0 && !_manualPlaying[idx]) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
 
       const beat = BEAT_DATA[beatId];
       if (!beat) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
@@ -88,13 +98,15 @@
       while (_seqNextTime[idx] < ac2.currentTime + SEQ_LOOKAHEAD) {
         const step = _seqStep[idx];
         const t    = _seqNextTime[idx];
-        const vel  = (s.thresh?.[3] > s.thresh?.[0])
-          ? Math.max(0.3, Math.min(1.0, (Math.abs(s.dev) - s.thresh[0]) / (s.thresh[3] - s.thresh[0])))
-          : 0.7;
+        const vel  = _manualPlaying[idx]
+          ? 0.8
+          : (s.thresh?.[3] > s.thresh?.[0])
+            ? Math.max(0.3, Math.min(1.0, (Math.abs(s.dev) - s.thresh[0]) / (s.thresh[3] - s.thresh[0])))
+            : 0.7;
 
         const pitchRate = Math.pow(2, (_sensorPitch[idx] || 0) / 12);
         if (beat.isWav) {
-          if (step % 4 === 0) SAMPLE_FNS[beatId]?.(t, vel, pitchRate);
+          if (step % 4 === 0) SAMPLE_FNS[beatId]?.(t, vel, pitchRate, idx);
         } else {
           for (const [instrId, pattern] of Object.entries(beat.tracks)) {
             const v = pattern[step];
@@ -113,12 +125,34 @@
     clearInterval(_seqTimers[idx]);
     _seqTimers[idx] = null;
     _seqStep[idx]   = 0;
+    stopWavSources(idx);
     // seqActive dikemas kini oleh sensors.subscribe sahaja
   }
 
+  async function playAll() {
+    if (!isRunning()) await activateAudio();
+    if (!isRunning()) return;
+    const samples = get(sensorSamples);
+    let changed = false;
+    for (let i = 0; i < 8; i++) {
+      if (samples[i] && !_manualPlaying[i]) {
+        _setManualPad(i, true);
+        _startSensorSeq(i);
+        if (!seqActive[i]) { seqActive[i] = true; changed = true; }
+      }
+    }
+    if (changed) seqActive = [...seqActive];
+    manualPlayActive = _manualPlaying.some(Boolean);
+  }
+
   function stopAllBeats() {
-    for (let i = 0; i < 8; i++) _stopSensorSeq(i);
+    for (let i = 0; i < 8; i++) {
+      _setManualPad(i, false);
+      _stopSensorSeq(i);
+    }
+    sampleUploadRef?.stopPreview();
     seqActive = [false, false, false, false, false, false, false, false];
+    manualPlayActive = false;
   }
 
   // ── Hit → kira hit & BPM sahaja (audio ditangani oleh sequencer) ──
@@ -228,8 +262,35 @@
   function rmove(e)  { if(resizing) panelH=Math.max(200,Math.min(700,rh0+ry0-e.clientY)); }
   function rend()    { resizing=false; }
 
+  // ── Trigger pad — toggle loop per pad (klik atau keyboard 1-8) ──
+  async function triggerPad(idx) {
+    // Jika pad sedang main → stop
+    if (_manualPlaying[idx]) {
+      _setManualPad(idx, false);
+      _stopSensorSeq(idx);
+      seqActive[idx] = false;
+      seqActive = [...seqActive];
+      manualPlayActive = _manualPlaying.some(Boolean);
+      return;
+    }
+
+    const sampleId = get(sensorSamples)[idx];
+    if (!sampleId) return;
+
+    if (!isRunning()) await activateAudio();
+    if (!isRunning()) return;
+
+    // Mula loop untuk pad ini
+    _setManualPad(idx, true);
+    _startSensorSeq(idx);
+    seqActive[idx] = true;
+    seqActive = [...seqActive];
+    manualPlayActive = true;
+  }
+
   // Keyboard shortcut: N=NAV, S=SEL, B=next BPM sensor, [=BPM-5, ]=BPM+5
   // P=next Pitch sensor, ,=Pitch-1, .=Pitch+1
+  // 1-8 = trigger pad langsung
   function onKeydown(e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     if (e.key === 'n' || e.key === 'N') { btnNav(isRunning() ? getAudioCtx() : null); tab = 'assign'; }
@@ -246,6 +307,10 @@
     }
     if (e.key === ',') { const s = get(pitchCtrl).sel; applyPitch(s, _sensorPitch[s] - 1); }
     if (e.key === '.') { const s = get(pitchCtrl).sel; applyPitch(s, _sensorPitch[s] + 1); }
+    // Pad 1–8 trigger tanpa sensor
+    if (e.key >= '1' && e.key <= '8') triggerPad(parseInt(e.key) - 1);
+    // Space = play/stop semua
+    if (e.key === ' ') { e.preventDefault(); manualPlayActive ? stopAllBeats() : playAll(); }
   }
 </script>
 
@@ -300,6 +365,14 @@
     >
       ⚠ Klik di sini untuk aktifkan audio — browser memerlukan interaksi pengguna
     </button>
+  {/if}
+
+  <!-- Hint mod standalone -->
+  {#if !$connected && audioReady}
+    <div class="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-500 flex items-center gap-3">
+      <span class="text-slate-400 font-medium">🥁 Mod Standalone</span>
+      <span>Klik pad atau tekan <kbd class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono">1</kbd>–<kbd class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono">8</kbd> untuk hit · <kbd class="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-400 font-mono">Space</kbd> play/stop loop.</span>
+    </div>
   {/if}
 
   {#if lastError}
@@ -371,15 +444,28 @@
       </div>
       <span class="text-[10px] text-slate-600 shrink-0">kb: P , .</span>
     </div>
-    <!-- Stop All -->
-    {#if seqActive.some(Boolean)}
-    <div class="flex items-center gap-3">
-      <span class="text-xs text-slate-500 flex-1">Beat sequencer aktif — magnet rapat untuk mainkan</span>
+    <!-- Transport: Play / Stop toggle -->
+    <div class="flex items-center gap-2 px-1 py-1 rounded-lg bg-slate-900 border border-slate-800">
       <button
-        class="text-xs px-3 py-1 rounded-lg bg-red-950 text-red-400 border border-red-900 hover:bg-red-900 transition-colors shrink-0"
-        on:click={stopAllBeats}>■ Stop Semua</button>
+        class="flex items-center gap-1.5 text-xs px-5 py-1.5 rounded-lg font-bold transition-all shrink-0
+          {manualPlayActive
+            ? 'bg-red-950 text-red-400 border border-red-900 hover:bg-red-900'
+            : 'bg-green-950 text-green-400 border border-green-900 hover:bg-green-900'}"
+        on:click={() => manualPlayActive ? stopAllBeats() : playAll()}
+        title="Play / Stop (Space)"
+      >
+        {manualPlayActive ? '■ Stop' : '▶ Play'}
+      </button>
+      <div class="flex-1 text-xs text-slate-600 text-right pr-1">
+        {#if manualPlayActive}
+          <span class="text-green-500 animate-pulse">● sedang main</span>
+        {:else if seqActive.some(Boolean)}
+          <span class="text-amber-600">● sensor aktif</span>
+        {:else}
+          <span>kb: Space</span>
+        {/if}
+      </div>
     </div>
-    {/if}
     <!-- 8 sensor butang — 2 baris, 4 per baris -->
     <div class="grid grid-cols-4 gap-2">
       {#each $sensors as s, i}
@@ -462,6 +548,9 @@
           bpmSelected  = {$bpmCtrl.sel === i}
           pitchSelected = {$pitchCtrl.sel === i}
           hasSample    = {!!sample.id}
+          connected    = {$connected}
+          playing      = {manualPads[i]}
+          on:tap       = {() => triggerPad(i)}
         />
       </div>
     {/each}
@@ -477,6 +566,7 @@
       <button class="tab-item {tab==='assign'    ? 'active' : ''}" on:click={() => tab='assign'}>🎛 Assign</button>
       <button class="tab-item {tab==='drum'      ? 'active' : ''}" on:click={() => tab='drum'}>📈 Waveform</button>
       <button class="tab-item {tab==='sequencer' ? 'active' : ''}" on:click={() => tab='sequencer'}>🥁 Sequencer</button>
+      <button class="tab-item {tab==='upload'    ? 'active' : ''}" on:click={() => tab='upload'}>📤 Upload Sample</button>
       <button class="tab-item {tab==='monitor'   ? 'active' : ''}" on:click={() => tab='monitor'}>⬛ Serial Monitor</button>
     </div>
     <div class="flex-1 overflow-hidden relative">
@@ -498,6 +588,11 @@
         <div class="border-t border-slate-800" style="height:250px; flex:none"><SynthSequencer /></div>
         <div class="border-t-2 border-amber-900" style="height:290px; flex:none"><TagadingSequencer /></div>
         <div class="border-t-2 border-pink-900" style="height:280px; flex:none"><HasapiSequencer /></div>
+      </div>
+
+      <!-- Upload Sample — always mounted -->
+      <div class="absolute inset-0" style="display:{tab==='upload' ? 'flex' : 'none'}; flex-direction:column">
+        <SampleUpload bind:this={sampleUploadRef} />
       </div>
 
       <!-- Serial Monitor — always mounted -->

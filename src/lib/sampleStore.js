@@ -25,7 +25,7 @@ import {
   scheduleConga, scheduleBongo,
   scheduleKick808, scheduleElecSnare,
   scheduleSynth, scheduleHasapi,
-  scheduleWav,
+  scheduleWav, scheduleWavBuffer, decodeAudioFile,
 } from './audio.js';
 
 // Path base untuk WAV (sesuai dengan vite base path)
@@ -337,6 +337,37 @@ export const SAMPLE_FNS = {
   percusion1:  (t, v, r = 1.0) => scheduleWav(`/esp32-drum-monitor/samples/percusion123.wav`, t, v, r),
 };
 
+// ── Uploaded samples (in-memory) ────────────────────────────────
+export const uploadedSamples = writable([]);
+const _uploadedMap = {};
+
+export function getAllSamples() {
+  return [...SAMPLES, ...get(uploadedSamples)];
+}
+
+export async function addUploadedSample(name, file) {
+  const id     = `upload_${Date.now()}`;
+  const buffer = await decodeAudioFile(file);
+  const entry  = { id, label: name, group: 'Upload', icon: '📁', color: '#60a5fa', buffer };
+  BEAT_DATA[id]   = { bpm: 120, isWav: true, isUpload: true, buffer, tracks: {} };
+  SAMPLE_FNS[id]  = (t, v, r = 1.0, sensorKey = null) => scheduleWavBuffer(buffer, t, v, r, sensorKey);
+  _uploadedMap[id] = entry;
+  uploadedSamples.update(arr => [...arr, entry]);
+  return id;
+}
+
+export function removeUploadedSample(id) {
+  delete BEAT_DATA[id];
+  delete SAMPLE_FNS[id];
+  delete _uploadedMap[id];
+  sensorSamples.update(arr => {
+    const n = arr.map(s => (s === id ? null : s));
+    _persist(n);
+    return n;
+  });
+  uploadedSamples.update(arr => arr.filter(s => s.id !== id));
+}
+
 // ── Persistence ─────────────────────────────────────────────────
 const DEFAULTS     = [null, null, null, null, null, null, null, null];
 const STORAGE_KEY  = 'drum_sensor_beats_v4';
@@ -377,12 +408,13 @@ export function btnNav(audioCtx = null) {
 
   } else if (state === 'sample') {
     // Next sample + preview bunyi
-    const sensor  = get(selectedSensor);
-    const nextIdx = (get(cursorIdx)[sensor] + 1) % SAMPLES.length;
+    const sensor   = get(selectedSensor);
+    const allS     = getAllSamples();
+    const nextIdx  = (get(cursorIdx)[sensor] + 1) % allS.length;
     cursorIdx.update(arr => { const n = [...arr]; n[sensor] = nextIdx; return n; });
     if (audioCtx) {
       try {
-        const beatId = SAMPLES[nextIdx].id;
+        const beatId = allS[nextIdx].id;
         const beat = BEAT_DATA[beatId];
         if (beat?.isWav) {
           scheduleWav(beat.wavUrl, audioCtx.currentTime, 0.6);
@@ -435,7 +467,7 @@ export function closePicker() {
 // ── Save / Delete ────────────────────────────────────────────────
 export function saveSample(sensorIdx) {
   const cursor   = get(cursorIdx)[sensorIdx];
-  const sampleId = SAMPLES[cursor]?.id;
+  const sampleId = getAllSamples()[cursor]?.id;
   if (!sampleId) return;
   sensorSamples.update(arr => { const n = [...arr]; n[sensorIdx] = sampleId; _persist(n); return n; });
 }
@@ -446,5 +478,5 @@ export function deleteSample(sensorIdx) {
 
 export function getSample(id) {
   if (!id) return EMPTY_SAMPLE;
-  return SAMPLES.find(s => s.id === id) ?? EMPTY_SAMPLE;
+  return SAMPLES.find(s => s.id === id) ?? _uploadedMap[id] ?? EMPTY_SAMPLE;
 }

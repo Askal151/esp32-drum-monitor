@@ -14,6 +14,81 @@ function getCtx() {
   return ctx;
 }
 
+// Kill gain per sensor — putus dari destination untuk henti serta-merta
+const _sensorKillGains = new Map();
+// Registry source nodes per sensor — untuk cleanup dan backup stop
+const _wavRegistry = new Map();
+
+function _getKillGain(sensorKey) {
+  if (!_sensorKillGains.has(sensorKey)) {
+    const ac = getCtx();
+    const g = ac.createGain();
+    g.connect(ac.destination);
+    _sensorKillGains.set(sensorKey, g);
+  }
+  return _sensorKillGains.get(sensorKey);
+}
+
+export function stopWavSources(sensorKey) {
+  const ac = getCtx();
+
+  // Layer 1: kill gain zeroed + disconnected
+  const kg = _sensorKillGains.get(sensorKey);
+  if (kg) {
+    try { kg.gain.cancelScheduledValues(ac.currentTime); } catch {}
+    try { kg.gain.setValueAtTime(0, ac.currentTime); } catch {}
+    try { kg.disconnect(); } catch {}
+    _sensorKillGains.delete(sensorKey);
+  }
+  // Layer 2: setiap source dan gain-nya diputus terus
+  const sources = _wavRegistry.get(sensorKey);
+  if (sources?.size) {
+    for (const { src, gain } of [...sources]) {
+      try { src.disconnect(); gain.disconnect(); } catch {}
+      try { src.stop(); } catch {}
+    }
+    sources.clear();
+  }
+}
+
+// ── Preview player (Upload panel) ─────────────────────────────
+// Managed entirely here as module-level state — no Svelte involvement
+let _previewGain = null;
+let _previewSrc  = null;
+
+function _getPreviewGain() {
+  const ac = getCtx();
+  if (!_previewGain) {
+    _previewGain = ac.createGain();
+    _previewGain.gain.value = 0;
+    _previewGain.connect(ac.destination);
+  }
+  return _previewGain;
+}
+
+export function stopPreviewBuffer() {
+  if (_previewGain) _previewGain.gain.value = 0;
+  if (_previewSrc) {
+    try { _previewSrc.stop(); } catch {}
+    _previewSrc = null;
+  }
+}
+
+// Returns the src node so caller can attach onended
+export function startPreviewBuffer(audioBuffer) {
+  stopPreviewBuffer();
+  const ac = getCtx();
+  const pg = _getPreviewGain();
+  pg.gain.value = 0.8;
+  const src = ac.createBufferSource();
+  src.buffer = audioBuffer;
+  src.connect(pg);
+  _previewSrc = src;
+  src.onended = () => { if (_previewSrc === src) _previewSrc = null; };
+  src.start();
+  return src;
+}
+
 // Helper: apply pitch rate to frequency
 const fr = (freq, rate) => freq * Math.max(0.25, Math.min(4.0, rate || 1.0));
 
@@ -1262,4 +1337,37 @@ export function scheduleWav(url, time, velocity = 1.0, rate = 1.0) {
     src.stop(time + dur);
     schedCleanup([src, gain], dur + 0.1);
   }).catch(e => console.warn('[audio] WAV load error:', e));
+}
+
+export function scheduleWavBuffer(audioBuffer, time, velocity = 1.0, rate = 1.0, sensorKey = null) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  const src  = ac.createBufferSource();
+  src.buffer = audioBuffer;
+  src.playbackRate.value = Math.max(0.25, Math.min(4.0, rate || 1.0));
+  const gain = ac.createGain();
+  gain.gain.value = vel * 0.85;
+  src.connect(gain);
+
+  if (sensorKey !== null) {
+    // Sambung melalui kill gain — putus kill gain = bisu serta-merta
+    gain.connect(_getKillGain(sensorKey));
+    if (!_wavRegistry.has(sensorKey)) _wavRegistry.set(sensorKey, new Set());
+    const set = _wavRegistry.get(sensorKey);
+    const entry = { src, gain };
+    set.add(entry);
+    src.onended = () => set.delete(entry);
+  } else {
+    gain.connect(ac.destination);
+  }
+
+  src.start(time);
+  const dur = audioBuffer.duration;
+  schedCleanup([src, gain], (time - ac.currentTime) + dur + 0.2);
+}
+
+export async function decodeAudioFile(file) {
+  const ac  = getCtx();
+  const arr = await file.arrayBuffer();
+  return ac.decodeAudioData(arr);
 }

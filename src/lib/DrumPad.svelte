@@ -2,7 +2,7 @@
   DrumPad.svelte — Canvas drum pad dengan animasi hit dan glow
 -->
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, createEventDispatcher } from 'svelte';
   import { hitEvent } from './serial.js';
 
   export let idx   = 0;
@@ -18,6 +18,10 @@
   export let bpmSelected   = false;
   export let pitchSelected = false;
   export let hasSample = false;
+  export let connected = false;
+  export let playing   = false;
+
+  const dispatch = createEventDispatcher();
 
   let canvas, ctx, rafId;
   let W = 0, H = 0;
@@ -124,10 +128,15 @@
     ctx.fillStyle = hitBright ? color : color + 'aa';
     ctx.fillText(name, cx, cy - R * 0.18);
 
-    // ADC value
+    // ADC value (sensor mode) atau hint klik/stop (standalone mode)
     ctx.font      = `bold ${Math.round(R * 0.22)}px monospace`;
-    ctx.fillStyle = hitBright ? '#ffffff' : '#475569';
-    ctx.fillText(adc, cx, cy + R * 0.12);
+    if (!connected && hasSample) {
+      ctx.fillStyle = hitBright ? '#ffffff' : color + '99';
+      ctx.fillText(playing ? '■ Stop' : '▶ Play', cx, cy + R * 0.12);
+    } else {
+      ctx.fillStyle = hitBright ? '#ffffff' : '#475569';
+      ctx.fillText(adc, cx, cy + R * 0.12);
+    }
 
     // LED bars
     const barW = R * 0.12, barH = R * 0.22, barGap = R * 0.06;
@@ -177,7 +186,7 @@
     return () => { unsub(); cancelAnimationFrame(rafId); ro.disconnect(); };
   });
 
-  $: { adc; dev; led; hits; dirty = true; }
+  $: { adc; dev; led; hits; connected; playing; dirty = true; }
 </script>
 
 <div class="flex flex-col items-center gap-2">
@@ -186,6 +195,8 @@
     <canvas
       bind:this={canvas}
       class="absolute inset-0 w-full h-full"
+      class:cursor-pointer={hasSample}
+      on:click={() => hasSample && dispatch('tap')}
     ></canvas>
   </div>
 
