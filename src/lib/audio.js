@@ -74,6 +74,12 @@ export function stopPreviewBuffer() {
   }
 }
 
+// Load WAV dari URL lalu main melalui preview gain (stoppable)
+export async function previewWavUrl(url) {
+  const buf = await _loadWav(url);
+  startPreviewBuffer(buf);
+}
+
 // Returns the src node so caller can attach onended
 export function startPreviewBuffer(audioBuffer) {
   stopPreviewBuffer();

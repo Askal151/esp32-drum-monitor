@@ -26,7 +26,7 @@ import {
   scheduleKick808, scheduleElecSnare,
   scheduleSynth, scheduleHasapi,
   scheduleWav, scheduleWavBuffer, decodeAudioFile,
-  startPreviewBuffer, stopPreviewBuffer,
+  startPreviewBuffer, stopPreviewBuffer, previewWavUrl,
 } from './audio.js';
 
 // Path base untuk WAV (sesuai dengan vite base path)
@@ -249,8 +249,6 @@ export const BEAT_DATA = {
     hihat:  [0,   0,    0.5,  0,    0,    0,    0,    0,    0,   0,    0.5,  0,    0,   0,    0,    0.25],
   }},
 
-  // ── WAV ──────────────────────────────────────────────────────
-  percusion1: { bpm: 120, isWav: true, wavUrl: '/esp32-drum-monitor/samples/percusion123.wav', tracks: {} },
 };
 
 // ── Metadata UI untuk 30 pola beat ──────────────────────────────
@@ -293,8 +291,6 @@ export const SAMPLES = [
   { id: 'fusion_tropical',        label: 'Tropical Fusion',     group: 'Fusion',      icon: '🎷', color: '#ec4899' },
   // Ambient
   { id: 'ambient_sparse',         label: 'Ambient Sparse',      group: 'Ambient',     icon: '🌙', color: '#94a3b8' },
-  // WAV
-  { id: 'percusion1',             label: 'Percusion 123 (WAV)', group: 'WAV',         icon: '🎵', color: '#34d399' },
 ];
 
 // ── Fungsi instrument (digunakan oleh beat sequencer) ────────────
@@ -335,7 +331,6 @@ export const SAMPLE_FNS = {
   has_g4:      (t, v, r = 1.0) => scheduleHasapi(392.00 * (r || 1), t, v),
   has_a4:      (t, v, r = 1.0) => scheduleHasapi(440.00 * (r || 1), t, v),
   // WAV
-  percusion1:  (t, v, r = 1.0) => scheduleWav(`/esp32-drum-monitor/samples/percusion123.wav`, t, v, r),
 };
 
 // ── Uploaded samples (in-memory) ────────────────────────────────
@@ -418,11 +413,9 @@ export function btnNav(audioCtx = null) {
         const beatId = allS[nextIdx].id;
         const beat = BEAT_DATA[beatId];
         if (beat?.isUpload && beat?.buffer) {
-          // Uploaded WAV — guna startPreviewBuffer supaya boleh di-stop
           startPreviewBuffer(beat.buffer);
         } else if (beat?.isWav && beat?.wavUrl) {
-          stopPreviewBuffer();
-          scheduleWav(beat.wavUrl, audioCtx.currentTime, 0.6);
+          previewWavUrl(beat.wavUrl);  // load + route melalui preview gain
         } else if (beat?.tracks) {
           stopPreviewBuffer();
           const firstInstr = Object.keys(beat.tracks)[0];

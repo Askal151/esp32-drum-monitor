@@ -10,7 +10,7 @@
     sensorSamples, selectedSensor, cursorIdx,
     saveSample, deleteSample, openPicker,
   } from './sampleStore.js';
-  import { getAudioCtx, ensureRunning, startPreviewBuffer, stopPreviewBuffer } from './audio.js';
+  import { getAudioCtx, ensureRunning, startPreviewBuffer, stopPreviewBuffer, previewWavUrl } from './audio.js';
   import { BEAT_DATA } from './sampleStore.js';
 
   const SENSOR_NAMES  = ['Congkak 1','Congkak 2','Congkak 3','Congkak 4','Congkak 5','Congkak 6','Congkak 7','Congkak 8'];
@@ -24,6 +24,8 @@
     // Stop WAV preview lama sebelum main yang baru
     if (beat?.isUpload && beat?.buffer) {
       startPreviewBuffer(beat.buffer);
+    } else if (beat?.isWav && beat?.wavUrl) {
+      previewWavUrl(beat.wavUrl);  // route melalui preview gain, boleh di-stop
     } else {
       stopPreviewBuffer();
       SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, 0.7);
