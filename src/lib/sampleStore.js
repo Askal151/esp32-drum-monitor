@@ -346,7 +346,7 @@ export async function addUploadedSample(name, file) {
   const buffer = await decodeAudioFile(file);
   const entry  = { id, label: name, group: 'Upload', icon: '📁', color: '#60a5fa', buffer };
   BEAT_DATA[id]   = { bpm: 120, isWav: true, isUpload: true, buffer, tracks: {} };
-  SAMPLE_FNS[id]  = (t, v, r = 1.0, sensorKey = null) => scheduleWavBuffer(buffer, t, v, r, sensorKey);
+  SAMPLE_FNS[id]  = (t, v, r = 1.0, sensorKey = null) => scheduleWavBuffer(buffer, t, v, 1.0, sensorKey, true, 1.0);
   _uploadedMap[id] = entry;
   uploadedSamples.update(arr => [...arr, entry]);
   return id;
@@ -367,7 +367,14 @@ export function removeUploadedSample(id) {
 // ── Persistence ─────────────────────────────────────────────────
 const DEFAULTS     = [null, null, null, null, null, null, null, null];
 const STORAGE_KEY  = 'drum_sensor_beats_v4';
-function _load()         { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch { return null; } }
+function _load() {
+  try {
+    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    if (!data) return null;
+    // Uploaded samples tidak kekal — buang assignment upload lama yang sudah tiada
+    return data.map(id => (id?.startsWith('upload_') ? null : id));
+  } catch { return null; }
+}
 function _persist(arr)   { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(arr)); } catch {} }
 
 // ── Stores ──────────────────────────────────────────────────────

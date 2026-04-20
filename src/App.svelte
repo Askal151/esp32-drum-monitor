@@ -9,7 +9,7 @@
   import SampleAssign      from './lib/SampleAssign.svelte';
   import SamplePicker      from './lib/SamplePicker.svelte';
   import SampleUpload      from './lib/SampleUpload.svelte';
-  import { unlockAudio, isRunning, getAudioCtx, ensureRunning, stopWavSources } from './lib/audio.js';
+  import { unlockAudio, isRunning, getAudioCtx, ensureRunning, stopWavSources, startWavLoop, stopWavLoop } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd,
@@ -71,6 +71,13 @@
     const ac = getAudioCtx();
     _seqNextTime[idx] = ac.currentTime + 0.05;
 
+    // Uploaded WAV: loop terus tanpa step sequencer
+    const beatId0 = get(sensorSamples)[idx];
+    const beat0   = BEAT_DATA[beatId0];
+    if (beat0?.isUpload && beat0?.buffer) {
+      startWavLoop(beat0.buffer, idx);
+    }
+
     _seqTimers[idx] = setInterval(() => {
       const ac2 = isRunning() ? getAudioCtx() : null;
       // Henti senyap — JANGAN sentuh seqActive dari sini (elak re-render)
@@ -105,7 +112,9 @@
             : 0.7;
 
         const pitchRate = Math.pow(2, (_sensorPitch[idx] || 0) / 12);
-        if (beat.isWav) {
+        if (beat.isUpload) {
+          // Uploaded WAV: loop sudah dimulakan di _startSensorSeq, skip di sini
+        } else if (beat.isWav) {
           if (step % 4 === 0) SAMPLE_FNS[beatId]?.(t, vel, pitchRate, idx);
         } else {
           for (const [instrId, pattern] of Object.entries(beat.tracks)) {
@@ -125,6 +134,7 @@
     clearInterval(_seqTimers[idx]);
     _seqTimers[idx] = null;
     _seqStep[idx]   = 0;
+    stopWavLoop(idx);
     stopWavSources(idx);
     // seqActive dikemas kini oleh sensors.subscribe sahaja
   }

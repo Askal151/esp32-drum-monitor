@@ -51,6 +51,35 @@ export function stopWavSources(sensorKey) {
   }
 }
 
+// ── Looping WAV untuk uploaded samples (sensor-triggered) ─────
+const _loopingWavs = new Map(); // sensorKey → { src, gain }
+
+export function startWavLoop(audioBuffer, sensorKey) {
+  stopWavLoop(sensorKey);
+  const ac = getCtx();
+  const src  = ac.createBufferSource();
+  src.buffer = audioBuffer;
+  src.loop   = true;
+  src.playbackRate.value = 1.0;
+  const gain = ac.createGain();
+  gain.gain.value = 1.0;
+  src.connect(gain);
+  gain.connect(ac.destination);
+  src.start();
+  _loopingWavs.set(sensorKey, { src, gain });
+  return src;
+}
+
+export function stopWavLoop(sensorKey) {
+  const entry = _loopingWavs.get(sensorKey);
+  if (!entry) return;
+  const ac = getCtx();
+  try { entry.gain.gain.setValueAtTime(0, ac.currentTime); } catch {}
+  try { entry.src.stop(); } catch {}
+  try { entry.src.disconnect(); entry.gain.disconnect(); } catch {}
+  _loopingWavs.delete(sensorKey);
+}
+
 // ── Preview player (Upload panel) ─────────────────────────────
 // Managed entirely here as module-level state — no Svelte involvement
 let _previewGain = null;
@@ -85,7 +114,7 @@ export function startPreviewBuffer(audioBuffer) {
   stopPreviewBuffer();
   const ac = getCtx();
   const pg = _getPreviewGain();
-  pg.gain.value = 0.8;
+  pg.gain.value = 1.0;
   const src = ac.createBufferSource();
   src.buffer = audioBuffer;
   src.connect(pg);
@@ -1345,14 +1374,27 @@ export function scheduleWav(url, time, velocity = 1.0, rate = 1.0) {
   }).catch(e => console.warn('[audio] WAV load error:', e));
 }
 
-export function scheduleWavBuffer(audioBuffer, time, velocity = 1.0, rate = 1.0, sensorKey = null) {
+// stopPrev=true: henti instance sebelum bermain (elak overlap) — untuk uploaded WAV
+// gainMult: pekali gain (1.0 = original, 0.85 = default lama)
+export function scheduleWavBuffer(audioBuffer, time, velocity = 1.0, rate = 1.0, sensorKey = null, stopPrev = false, gainMult = 0.85) {
   const ac  = getCtx();
   const vel = Math.max(0.1, Math.min(1.0, velocity));
+
+  if (stopPrev && sensorKey !== null) {
+    const prevSet = _wavRegistry.get(sensorKey);
+    if (prevSet?.size) {
+      for (const { src: ps, gain: pg } of [...prevSet]) {
+        try { pg.gain.setValueAtTime(0, time); ps.stop(time + 0.01); } catch {}
+      }
+      prevSet.clear();
+    }
+  }
+
   const src  = ac.createBufferSource();
   src.buffer = audioBuffer;
   src.playbackRate.value = Math.max(0.25, Math.min(4.0, rate || 1.0));
   const gain = ac.createGain();
-  gain.gain.value = vel * 0.85;
+  gain.gain.value = vel * gainMult;
   src.connect(gain);
 
   if (sensorKey !== null) {
