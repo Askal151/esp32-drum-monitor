@@ -25,7 +25,7 @@ import {
   scheduleConga, scheduleBongo,
   scheduleKick808, scheduleElecSnare,
   scheduleSynth, scheduleHasapi,
-  scheduleWav, scheduleWavBuffer, decodeAudioFile,
+  scheduleWav, scheduleWavBuffer, decodeAudioFile, decodeAudioBuffer,
   startPreviewBuffer, stopPreviewBuffer, previewWavUrl,
 } from './audio.js';
 
@@ -333,7 +333,7 @@ export const SAMPLE_FNS = {
   // WAV
 };
 
-// ── Uploaded samples (in-memory) ────────────────────────────────
+// ── Uploaded samples ─────────────────────────────────────────────
 export const uploadedSamples = writable([]);
 const _uploadedMap = {};
 
@@ -341,18 +341,74 @@ export function getAllSamples() {
   return [...SAMPLES, ...get(uploadedSamples)];
 }
 
-export async function addUploadedSample(name, file) {
-  const id     = `upload_${Date.now()}`;
-  const buffer = await decodeAudioFile(file);
-  const entry  = { id, label: name, group: 'Upload', icon: '📁', color: '#60a5fa', buffer };
-  BEAT_DATA[id]   = { bpm: 120, isWav: true, isUpload: true, buffer, tracks: {} };
-  SAMPLE_FNS[id]  = (t, v, r = 1.0, sensorKey = null) => scheduleWavBuffer(buffer, t, v, 1.0, sensorKey, true, 1.0);
+// ── IndexedDB persistence ─────────────────────────────────────────
+const IDB_NAME    = 'drum_monitor_db';
+const IDB_VERSION = 1;
+const IDB_STORE   = 'audio_files';
+
+function _openIDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+async function _idbSave(id, name, arrayBuffer) {
+  const db = await _openIDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put({ id, name, arrayBuffer });
+    tx.oncomplete = () => resolve();
+    tx.onerror    = e => reject(e.target.error);
+  });
+}
+
+async function _idbDelete(id) {
+  const db = await _openIDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror    = e => reject(e.target.error);
+  });
+}
+
+async function _idbLoadAll() {
+  const db = await _openIDB();
+  return new Promise((resolve, reject) => {
+    const tx  = db.transaction(IDB_STORE, 'readonly');
+    const req = tx.objectStore(IDB_STORE).getAll();
+    req.onsuccess = e => resolve(e.target.result ?? []);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function _registerUpload(id, name, buffer) {
+  const entry = { id, label: name, group: 'Upload', icon: '📁', color: '#60a5fa', buffer };
+  BEAT_DATA[id]    = { bpm: 120, isWav: true, isUpload: true, buffer, tracks: {} };
+  SAMPLE_FNS[id]   = (t, v, r = 1.0, sensorKey = null) => scheduleWavBuffer(buffer, t, v, 1.0, sensorKey, true, 1.0);
   _uploadedMap[id] = entry;
   uploadedSamples.update(arr => [...arr, entry]);
+}
+
+export async function addUploadedSample(name, file) {
+  const id          = `upload_${Date.now()}`;
+  const arrayBuffer = await file.arrayBuffer();
+  await _idbSave(id, name, arrayBuffer);
+  const buffer = await decodeAudioBuffer(arrayBuffer.slice(0));
+  _registerUpload(id, name, buffer);
   return id;
 }
 
 export function removeUploadedSample(id) {
+  _idbDelete(id).catch(() => {});
   delete BEAT_DATA[id];
   delete SAMPLE_FNS[id];
   delete _uploadedMap[id];
@@ -364,16 +420,42 @@ export function removeUploadedSample(id) {
   uploadedSamples.update(arr => arr.filter(s => s.id !== id));
 }
 
+// Load semua uploaded samples dari IDB pada startup
+// Dipanggil automatik — reconcile sensorSamples selepas IDB load
+async function _initFromIDB() {
+  try {
+    const entries  = await _idbLoadAll();
+    const validIds = new Set();
+    for (const { id, name, arrayBuffer } of entries) {
+      try {
+        const buffer = await decodeAudioBuffer(arrayBuffer.slice(0));
+        _registerUpload(id, name, buffer);
+        validIds.add(id);
+      } catch {
+        _idbDelete(id).catch(() => {});
+      }
+    }
+    // Buang sensor assignments yang merujuk upload ID tidak wujud dalam IDB
+    sensorSamples.update(arr => {
+      const n = arr.map(id => (id?.startsWith('upload_') && !validIds.has(id)) ? null : id);
+      _persist(n);
+      return n;
+    });
+  } catch {
+    // IDB tidak tersedia — buang semua upload assignments
+    sensorSamples.update(arr => {
+      const n = arr.map(id => id?.startsWith('upload_') ? null : id);
+      _persist(n);
+      return n;
+    });
+  }
+}
+
 // ── Persistence ─────────────────────────────────────────────────
 const DEFAULTS     = [null, null, null, null, null, null, null, null];
 const STORAGE_KEY  = 'drum_sensor_beats_v4';
 function _load() {
-  try {
-    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    if (!data) return null;
-    // Uploaded samples tidak kekal — buang assignment upload lama yang sudah tiada
-    return data.map(id => (id?.startsWith('upload_') ? null : id));
-  } catch { return null; }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch { return null; }
 }
 function _persist(arr)   { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(arr)); } catch {} }
 
@@ -397,7 +479,7 @@ function _resetTimer() {
 }
 
 // ── Button NAV ───────────────────────────────────────────────────
-export function btnNav(audioCtx = null) {
+export function btnNav() {
   const state = get(pickerState);
 
   if (state === 'idle') {
@@ -410,26 +492,10 @@ export function btnNav(audioCtx = null) {
     selectedSensor.update(i => (i + 1) % 8);
 
   } else if (state === 'sample') {
-    // Next sample + preview bunyi
-    const sensor   = get(selectedSensor);
-    const allS     = getAllSamples();
-    const nextIdx  = (get(cursorIdx)[sensor] + 1) % allS.length;
+    const sensor  = get(selectedSensor);
+    const allS    = getAllSamples();
+    const nextIdx = (get(cursorIdx)[sensor] + 1) % allS.length;
     cursorIdx.update(arr => { const n = [...arr]; n[sensor] = nextIdx; return n; });
-    if (audioCtx) {
-      try {
-        const beatId = allS[nextIdx].id;
-        const beat = BEAT_DATA[beatId];
-        if (beat?.isUpload && beat?.buffer) {
-          startPreviewBuffer(beat.buffer);
-        } else if (beat?.isWav && beat?.wavUrl) {
-          previewWavUrl(beat.wavUrl);  // load + route melalui preview gain
-        } else if (beat?.tracks) {
-          stopPreviewBuffer();
-          const firstInstr = Object.keys(beat.tracks)[0];
-          if (firstInstr) SAMPLE_FNS[firstInstr]?.(audioCtx.currentTime, 0.6);
-        }
-      } catch {}
-    }
   }
 
   _resetTimer();
@@ -488,3 +554,6 @@ export function getSample(id) {
   if (!id) return EMPTY_SAMPLE;
   return SAMPLES.find(s => s.id === id) ?? _uploadedMap[id] ?? EMPTY_SAMPLE;
 }
+
+// Auto-load uploaded samples dari IndexedDB pada startup
+_initFromIDB();

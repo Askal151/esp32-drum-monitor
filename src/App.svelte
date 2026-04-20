@@ -251,7 +251,7 @@
   btnEvent.subscribe(e => {
     if (!e.ts) return;
     if (e.btn === 'NAV') {
-      btnNav(isRunning() ? getAudioCtx() : null);
+      btnNav();
       tab = 'assign';
     }
     if (e.btn === 'SEL') {
@@ -317,7 +317,7 @@
   // 1-8 = trigger pad langsung
   function onKeydown(e) {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-    if (e.key === 'n' || e.key === 'N') { btnNav(isRunning() ? getAudioCtx() : null); tab = 'assign'; }
+    if (e.key === 'n' || e.key === 'N') { btnNav(); tab = 'assign'; }
     if (e.key === 's' || e.key === 'S') { btnSel(); }
     if (e.key === 'b' || e.key === 'B') {
       const nextSel = (get(bpmCtrl).sel + 1) % 8;

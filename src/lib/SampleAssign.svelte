@@ -10,27 +10,10 @@
     sensorSamples, selectedSensor, cursorIdx,
     saveSample, deleteSample, openPicker,
   } from './sampleStore.js';
-  import { getAudioCtx, ensureRunning, startPreviewBuffer, stopPreviewBuffer, previewWavUrl } from './audio.js';
-  import { BEAT_DATA } from './sampleStore.js';
-
   const SENSOR_NAMES  = ['Congkak 1','Congkak 2','Congkak 3','Congkak 4','Congkak 5','Congkak 6','Congkak 7','Congkak 8'];
   const SENSOR_COLORS = ['#22d3ee','#4ade80','#f59e0b','#f472b6','#a78bfa','#fb923c','#34d399','#f87171'];
 
   const GROUPS = [...new Set(SAMPLES.map(s => s.group))];
-
-  async function previewSample(sampleId) {
-    await ensureRunning();
-    const beat = BEAT_DATA[sampleId];
-    // Stop WAV preview lama sebelum main yang baru
-    if (beat?.isUpload && beat?.buffer) {
-      startPreviewBuffer(beat.buffer);
-    } else if (beat?.isWav && beat?.wavUrl) {
-      previewWavUrl(beat.wavUrl);  // route melalui preview gain, boleh di-stop
-    } else {
-      stopPreviewBuffer();
-      SAMPLE_FNS[sampleId]?.(getAudioCtx().currentTime, 0.7);
-    }
-  }
 
   function clickSensor(i) {
     selectedSensor.set(i);
@@ -42,7 +25,6 @@
       next[sensorIdx] = sampleIdx;
       return next;
     });
-    previewSample(SAMPLES[sampleIdx].id);
   }
 
   // Scroll item kursor ke dalam view saat berubah
