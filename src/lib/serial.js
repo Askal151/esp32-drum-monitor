@@ -195,9 +195,13 @@ export async function connect() {
     try { await _port.close(); } catch {}
     await delay(400);
     await _port.open({ baudRate: 115200, bufferSize: 16384 });
-    _reader = _port.readable.getReader();
     _running = true; _wantMonitor = true;
     connected.set(true); portState.set('monitor');
+    // Bagi ESP32 masa untuk selesai auto-reset + kalibrasi baseline (~3.2s)
+    // DTR toggle semasa port dibuka mencetuskan reset litar — tanpa delay ini
+    // reader bermula terlalu awal dan Chrome lempar "device has been lost"
+    await delay(3500);
+    _reader = _port.readable.getReader();
     readLoop(); return true;
   } catch (e) {
     if (e.name !== 'NotFoundError') console.error('[serial] gagal:', e);
