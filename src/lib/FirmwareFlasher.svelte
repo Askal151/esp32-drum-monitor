@@ -65,6 +65,12 @@
         port = await navigator.serial.requestPort();
       }
 
+      // Pastikan port tertutup sepenuhnya sebelum esptool-js buka semula
+      // (port mungkin masih terbuka dari serial monitor atau sesi sebelumnya)
+      addLog('Pastikan port tertutup...');
+      try { await port.close(); } catch {}
+      await delay(500);
+
       // 3. Setup esptool-js terminal → redirect log ke UI
       const terminal = {
         clean()       { /* bersihkan terminal — tidak perlu */ },
