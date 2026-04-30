@@ -8,6 +8,7 @@
   import HasapiSequencer   from './lib/HasapiSequencer.svelte';
   import SampleAssign      from './lib/SampleAssign.svelte';
   import SamplePicker      from './lib/SamplePicker.svelte';
+  import FirmwareFlasher   from './lib/FirmwareFlasher.svelte';
   import SampleUpload      from './lib/SampleUpload.svelte';
   import { unlockAudio, isRunning, getAudioCtx, ensureRunning, stopWavSources, startWavLoop, stopWavLoop, updateWavLoopRate } from './lib/audio.js';
   import {
@@ -259,13 +260,16 @@
     }
   });
 
+  let selectedBaud = 115200;
+  const BAUD_OPTIONS = [115200, 74880, 9600];
+
   async function toggleConn() {
     lastError = '';
     unlockAudio();
     if ($connected) {
       await disconnect();
     } else {
-      try { await connect(); } catch(e) { lastError = e.message; }
+      try { await connect(selectedBaud); } catch(e) { lastError = e.message; }
     }
   }
 
@@ -374,6 +378,17 @@
       {#if $connected}
         <button class="btn-gray" on:click={() => sendCmd('s')}>📋 Status</button>
         <button class="btn-gray" on:click={() => sendCmd('r')}>↺ Reset</button>
+      {/if}
+      {#if !$connected}
+        <select
+          bind:value={selectedBaud}
+          class="text-xs px-2 py-1.5 rounded-md bg-slate-800 text-slate-400 ring-1 ring-slate-700 outline-none cursor-pointer"
+          title="Baud rate — 115200 untuk firmware, 74880 untuk bootloader"
+        >
+          {#each BAUD_OPTIONS as b}
+            <option value={b}>{b}</option>
+          {/each}
+        </select>
       {/if}
       <button class="{$connected ? 'btn-disconnect' : 'btn-connect'}" on:click={toggleConn}>
         {$connected ? '⏏ Putus' : '⚡ Sambung'}
@@ -592,6 +607,7 @@
       <button class="tab-item {tab==='sequencer' ? 'active' : ''}" on:click={() => tab='sequencer'}>🥁 Sequencer</button>
       <button class="tab-item {tab==='upload'    ? 'active' : ''}" on:click={() => tab='upload'}>📤 Upload Sample</button>
       <button class="tab-item {tab==='monitor'   ? 'active' : ''}" on:click={() => tab='monitor'}>⬛ Serial Monitor</button>
+      <button class="tab-item {tab==='flash'     ? 'active' : ''}" on:click={() => tab='flash'}>⚡ Flash Firmware</button>
     </div>
     <div class="flex-1 overflow-hidden relative">
 
@@ -622,6 +638,11 @@
       <!-- Serial Monitor — always mounted -->
       <div class="absolute inset-0 p-2" style="display:{tab==='monitor' ? 'flex' : 'none'}; flex-direction:column">
         <SerialMonitor onSendCmd={sendCmd} />
+      </div>
+
+      <!-- Flash Firmware — always mounted -->
+      <div class="absolute inset-0" style="display:{tab==='flash' ? 'flex' : 'none'}; flex-direction:column">
+        <FirmwareFlasher />
       </div>
 
     </div>

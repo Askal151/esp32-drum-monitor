@@ -9,9 +9,10 @@ import { writable } from 'svelte/store';
 export const MAX_POINTS  = 400;
 export const MAX_HISTORY = 2000;
 
-export const portState   = writable('idle');
-export const connected   = writable(false);
-export const packetCount = writable(0);
+export const portState    = writable('idle');
+export const connected    = writable(false);
+export const packetCount  = writable(0);
+export const rawLineCount = writable(0);  // semua baris RX — termasuk yang tak match regex
 
 export const sensors = writable([
   { adc: 0, volt: 0, dev: 0, led: 0, baseline: 0, thresh: [10,  25,  60,  120],  name: 'S1' },
@@ -51,6 +52,7 @@ function emitRaw(text, dir = 'rx') {
   const ts = new Date().toISOString().slice(11, 23);
   rawHistory.push({ text, dir, ts });
   if (rawHistory.length > MAX_HISTORY) rawHistory.shift();
+  if (dir === 'rx') rawLineCount.update(n => n + 1);
   _listeners.forEach(fn => fn(text, dir, ts));
 }
 
@@ -126,6 +128,7 @@ function parseLine(raw) {
 async function readLoop() {
   const dec = new TextDecoder();
   _lineBuf = '';
+  emitRaw('[USB] Sambungan aktif — menunggu data ESP32...', 'rx');
   while (_running) {
     try {
       const { value, done } = await _reader.read();
@@ -139,12 +142,13 @@ async function readLoop() {
       break;
     }
   }
-  // Cleanup — jangan panggil _autoReconnect dari sini (elak infinite recursion)
   _running = false;
+  connected.set(false);
   try { _reader?.releaseLock(); } catch {}
   _reader = null;
   try { await _port?.close(); } catch {}
   _port = null;
+  if (_wantMonitor && !_reconnecting) _autoReconnect();
 }
 
 async function _autoReconnect() {
@@ -160,13 +164,15 @@ async function _autoReconnect() {
       if (!ports.length) { emitRaw(`[USB] Tiada port (${attempt}/5)`, 'rx'); continue; }
       _port = ports[0];
       await _port.open({ baudRate: 115200, bufferSize: 16384 });
+      emitRaw('[USB] Port dibuka — tunggu ESP32 boot (3.5s)...', 'rx');
+      await delay(3500);
       _reader = _port.readable.getReader();
       _running = true; _reconnecting = false;
       connected.set(true); portState.set('monitor');
       emitRaw('[USB] Sambungan dipulihkan ✓', 'rx');
-      readLoop(); // fire-and-forget, jangan await (elak recursive call)
+      readLoop();
       return;
-    } catch (e) { /* cuba lagi */ }
+    } catch (e) { emitRaw(`[USB] Percubaan ${attempt}/5 gagal...`, 'rx'); }
   }
   _reconnecting = false; portState.set('idle'); _wantMonitor = false;
   emitRaw('[SISTEM] Reconnect gagal — klik Sambung semula', 'rx');
@@ -187,24 +193,28 @@ if (typeof navigator !== 'undefined' && navigator.serial) {
   });
 }
 
-export async function connect() {
+export async function connect(baudRate = 115200) {
   if (!navigator.serial) { alert('Web Serial API tidak disokong. Sila guna Chrome / Edge.'); return false; }
   try {
     _port = await navigator.serial.requestPort();
     // Selalu close dulu — Chrome mungkin masih pegang port dari sesi sebelumnya
     try { await _port.close(); } catch {}
     await delay(400);
-    await _port.open({ baudRate: 115200, bufferSize: 16384 });
+    await _port.open({ baudRate, bufferSize: 16384 });
     _running = true; _wantMonitor = true;
-    connected.set(true); portState.set('monitor');
+    portState.set('monitor');
+    emitRaw(`[USB] Port dibuka @ ${baudRate} baud — tunggu ESP32 boot (3.5s)...`, 'rx');
     // Bagi ESP32 masa untuk selesai auto-reset + kalibrasi baseline (~3.2s)
     // DTR toggle semasa port dibuka mencetuskan reset litar — tanpa delay ini
     // reader bermula terlalu awal dan Chrome lempar "device has been lost"
     await delay(3500);
     _reader = _port.readable.getReader();
+    connected.set(true);  // set SELEPAS reader berjaya — bukan sebelum
     readLoop(); return true;
   } catch (e) {
     if (e.name !== 'NotFoundError') console.error('[serial] gagal:', e);
+    _running = false; _wantMonitor = false;
+    connected.set(false); portState.set('idle');
     _port = null; throw e;
   }
 }
@@ -216,6 +226,7 @@ export async function disconnect() {
   _reader = null; await delay(150);
   try { await _port?.close(); } catch {}
   _port = null; connected.set(false); portState.set('idle'); _lineBuf = '';
+  rawLineCount.set(0); packetCount.set(0);
 }
 
 export async function sendCmd(cmd) {

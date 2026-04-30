@@ -1,7 +1,7 @@
 <!-- SerialMonitor.svelte — Canvas terminal, virtual scroll -->
 <script>
   import { onMount } from 'svelte';
-  import { onRawLine, rawHistory } from './serial.js';
+  import { onRawLine, rawHistory, rawLineCount, packetCount, connected } from './serial.js';
 
   const MAX_LINES = 2000;
   const LINE_H = 17;
@@ -12,7 +12,7 @@
 
   function classify(t) {
     if (!t) return 'default';
-    if (t.startsWith('HALL2|'))  return 'data';
+    if (t.startsWith('HALL8|'))  return 'data';
     if (t.startsWith('>> '))     return 'tx';
     if (t.startsWith('[USB]'))   return 'usb';
     if (t.startsWith('[SISTEM]')) return 'sys';
@@ -131,7 +131,20 @@
       <input class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-400 font-mono outline-none focus:border-slate-600" placeholder="Filter..." bind:value={filterTxt} spellcheck="false" />
       {#if filterTxt}<button class="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-600 text-xs" on:click={()=>filterTxt=''}>✕</button>{/if}
     </div>
-    <span class="text-xs font-mono text-slate-700">{dispLines.length}/{total}</span>
+    <!-- Diagnostik: semua baris RX vs HALL8 berjaya -->
+    <span class="text-xs font-mono" title="Baris RX diterima | HALL8 berjaya diparse">
+      <span class="{$rawLineCount > 0 ? 'text-green-500' : 'text-slate-700'}">{$rawLineCount}</span>
+      <span class="text-slate-700"> rx / </span>
+      <span class="{$packetCount > 0 ? 'text-cyan-500' : 'text-slate-700'}">{$packetCount}</span>
+      <span class="text-slate-700"> pkt</span>
+    </span>
+    {#if $connected && onSendCmd}
+      <button
+        class="text-xs px-2 py-1 bg-slate-900 border border-slate-700 rounded text-slate-500 hover:text-cyan-400 hover:border-cyan-900"
+        on:click={() => onSendCmd('s')}
+        title="Hantar 's' — minta status ESP32 (ping)"
+      >📋</button>
+    {/if}
     <button class="text-xs px-2 py-1 bg-slate-900 border border-slate-800 rounded text-slate-600 hover:text-red-400" on:click={clearAll}>🗑</button>
     <button class="text-xs px-2 py-1 rounded border {autoScroll?'bg-slate-800 border-cyan-900 text-cyan-400':'bg-slate-900 border-slate-800 text-slate-600'}"
       on:click={()=>{autoScroll=!autoScroll;if(autoScroll){snapBottom();dirty=true;}}}>{autoScroll?'⏬':'⏸'}</button>

@@ -7,7 +7,7 @@
  * Button SEL      : GPIO 25  — tekan untuk simpan/confirm sample
  * Button BPMNAV   : GPIO 27  — tekan untuk pilih sensor BPM (S1→S2→...→S8→S1)
  * Potensio BPM    : GPIO 34  — putar untuk ubah BPM sensor dipilih (40–200 BPM)
- * Button PITCHNAV : GPIO 18  — tekan untuk pilih sensor Pitch (S1→S2→...→S8→S1)
+ * Button PITCHNAV : GPIO 32  — tekan untuk pilih sensor Pitch (S1→S2→...→S8→S1)
  * Potensio Pitch  : GPIO 35  — putar untuk ubah Pitch sensor dipilih (-12..+12 semitone)
  *
  * CATATAN PIN:
@@ -46,7 +46,7 @@ inline int16_t readSensor(int s) {
 #define BTN_NAV      26
 #define BTN_SEL      25
 #define BTN_BPMNAV   27   // Button pilih sensor BPM
-#define BTN_PITCHNAV 18   // Button pilih sensor Pitch
+#define BTN_PITCHNAV 32   // Button pilih sensor Pitch
 
 // ── Pin Potensio ───────────────────────────────────────────────
 #define POT_BPM    34   // ADC1 CH6, input-only
