@@ -102,11 +102,13 @@
       phase = 'flashing';
       addLog('Mula proses flash...');
 
+      // DIO mode — lebih serasi dengan pelbagai ESP32 module (termasuk clone)
+      // Firmware juga dikompil semula dengan DIO mode supaya bootloader sesuai
       await loader.writeFlash({
         fileArray,
         flashSize: 'keep',
-        flashMode: 'keep',
-        flashFreq: 'keep',
+        flashMode: 'dio',
+        flashFreq: '80m',
         eraseAll:  false,
         compress:  true,
         reportProgress(fileIdx, written, total) {
