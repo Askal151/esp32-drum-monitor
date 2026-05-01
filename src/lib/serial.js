@@ -164,8 +164,9 @@ async function _autoReconnect() {
       if (!ports.length) { emitRaw(`[USB] Tiada port (${attempt}/5)`, 'rx'); continue; }
       _port = ports[0];
       await _port.open({ baudRate: 115200, bufferSize: 16384 });
-      emitRaw('[USB] Port dibuka — tunggu ESP32 boot (3.5s)...', 'rx');
-      await delay(3500);
+      portState.set('connecting');
+      emitRaw('[USB] Port dibuka — tunggu ESP32 boot (5s)...', 'rx');
+      await delay(5000);
       _reader = _port.readable.getReader();
       _running = true; _reconnecting = false;
       connected.set(true); portState.set('monitor');
@@ -197,19 +198,18 @@ export async function connect(baudRate = 115200) {
   if (!navigator.serial) { alert('Web Serial API tidak disokong. Sila guna Chrome / Edge.'); return false; }
   try {
     _port = await navigator.serial.requestPort();
-    // Selalu close dulu — Chrome mungkin masih pegang port dari sesi sebelumnya
-    try { await _port.close(); } catch {}
-    await delay(400);
     await _port.open({ baudRate, bufferSize: 16384 });
     _running = true; _wantMonitor = true;
-    portState.set('monitor');
-    emitRaw(`[USB] Port dibuka @ ${baudRate} baud — tunggu ESP32 boot (3.5s)...`, 'rx');
-    // Bagi ESP32 masa untuk selesai auto-reset + kalibrasi baseline (~3.2s)
-    // DTR toggle semasa port dibuka mencetuskan reset litar — tanpa delay ini
-    // reader bermula terlalu awal dan Chrome lempar "device has been lost"
-    await delay(3500);
+    // 'connecting' semasa tunggu ESP32 boot — cegah user klik Sambung dua kali
+    portState.set('connecting');
+    emitRaw(`[USB] Port dibuka @ ${baudRate} baud — tunggu ESP32 boot (5s)...`, 'rx');
+    // DTR toggle semasa open() mencetuskan reset ESP32 — tunggu boot + kalibrasi
+    // Kalibrasi: 200 samples × 8 sensor × 2ms = 3200ms + overhead I2C ~1s = ~4.2s
+    await delay(5000);
+    if (!_running) { portState.set('idle'); return false; }  // disconnect dipanggil semasa tunggu
     _reader = _port.readable.getReader();
-    connected.set(true);  // set SELEPAS reader berjaya — bukan sebelum
+    connected.set(true);
+    portState.set('monitor');
     readLoop(); return true;
   } catch (e) {
     if (e.name !== 'NotFoundError') console.error('[serial] gagal:', e);

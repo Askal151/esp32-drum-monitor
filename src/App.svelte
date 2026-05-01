@@ -356,6 +356,8 @@
       {#if $portState === 'monitor'}
         <span class="text-xs font-bold text-green-400">● Live</span>
         <span class="text-xs text-slate-700">{$packetCount} paket</span>
+      {:else if $portState === 'connecting'}
+        <span class="text-xs font-bold text-yellow-400 animate-pulse">⏳ Menyambung...</span>
       {:else}
         <span class="text-xs text-slate-700">○ Idle</span>
       {/if}
@@ -390,8 +392,12 @@
           {/each}
         </select>
       {/if}
-      <button class="{$connected ? 'btn-disconnect' : 'btn-connect'}" on:click={toggleConn}>
-        {$connected ? '⏏ Putus' : '⚡ Sambung'}
+      <button
+        class="{$connected ? 'btn-disconnect' : 'btn-connect'} disabled:opacity-40 disabled:cursor-not-allowed"
+        on:click={toggleConn}
+        disabled={$portState === 'connecting'}
+      >
+        {$connected ? '⏏ Putus' : $portState === 'connecting' ? '⏳ Tunggu...' : '⚡ Sambung'}
       </button>
     </div>
   </header>
@@ -653,6 +659,8 @@
     <span>
       {#if $portState === 'idle'}
         Klik ⚡ Sambung → pilih port ESP32 (115200) — Chrome / Edge sahaja
+      {:else if $portState === 'connecting'}
+        ⏳ Tunggu ESP32 boot + kalibrasi sensor (±5 saat)...
       {:else}
         ● Menerima data sensor drum
       {/if}
