@@ -107,10 +107,10 @@
       await loader.writeFlash({
         fileArray,
         flashSize: 'keep',
-        flashMode: 'dio',
-        flashFreq: '80m',
-        eraseAll:  false,
-        compress:  true,
+        flashMode: 'keep',
+        flashFreq: '40m',
+        eraseAll:  true,
+        compress:  false,
         reportProgress(fileIdx, written, total) {
           flashProgress = total > 0 ? Math.round((written / total) * 100) : 0;
           flashLabel    = BINS[fileIdx]?.label ?? 'File';
