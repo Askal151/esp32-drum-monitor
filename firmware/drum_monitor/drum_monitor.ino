@@ -56,28 +56,34 @@ inline int16_t readSensor(int s) {
 #define NUM_SENSORS          8
 #define SAMPLES_BASELINE     200        // lebih banyak sample = baseline lebih tepat
 #define DEBOUNCE_MS          80
-#define BASELINE_INTERVAL_MS 30000UL    // 30 saat — recal bila semua sensor idle
 
 // Output ke serial tiap 20ms (50Hz), baca sensor tiap 2ms (500Hz)
 #define SERIAL_INTERVAL_MS   20
 #define SAMPLE_INTERVAL_MS   2
 
-// S1–S4: ADS1015 (1mV/count @ GAIN_TWO) — minimum threshold
-// S5–S8: ADS1115 (0.0625mV/count @ GAIN_TWO) — minimum threshold
+// S1–S4: ADS1015 (1mV/count @ GAIN_TWO)
+// S5–S8: ADS1115 (0.0625mV/count @ GAIN_TWO)
+// Threshold dikira dari noise floor sesi log 20260505:
+//   S1-S4 noise max=65 → L1=80(1.2×), L2=130, L3=180, L4=200
+//   S5-S8 noise max=87 → L1=384(4.4×), L2=960, L3=1920, L4=3200
 int thresh[NUM_SENSORS][4] = {
-  {10,  25,  60,  120},     // S1
-  {10,  25,  60,  120},     // S2
-  {10,  25,  60,  120},     // S3
-  {10,  25,  60,  120},     // S4
-  {80,  200, 600, 1200},    // S5
-  {80,  200, 600, 1200},    // S6
-  {80,  200, 600, 1200},    // S7
-  {80,  200, 600, 1200},    // S8
+  {80,  130, 180, 200},    // S1
+  {80,  130, 180, 200},    // S2
+  {80,  130, 180, 200},    // S3
+  {80,  130, 180, 200},    // S4
+  {384, 960, 1920, 3200},  // S5
+  {384, 960, 1920, 3200},  // S6
+  {384, 960, 1920, 3200},  // S7
+  {384, 960, 1920, 3200},  // S8
 };
 
+// Arah deviasi yang sah bagi setiap sensor apabila magnet mendekat:
+//  +1 = dev mesti POSITIF (magnet menaikkan bacaan ADC)
+//  -1 = dev mesti NEGATIF (magnet menurunkan bacaan ADC)
+// Disahkan dari dua sesi log (20260504 + 20260505)
+int hitDir[NUM_SENSORS] = { -1, +1, -1, +1, +1, -1, -1, -1 };
+
 int16_t baseline[NUM_SENSORS] = {0};
-bool    baselineDone           = false;
-unsigned long lastBaselineTime = 0;
 
 // ── Peak detection state ───────────────────────────────────────
 int16_t peakAdc[NUM_SENSORS] = {0};
@@ -158,8 +164,8 @@ void setup() {
   potPitchPrev = readPitch();   // rekod posisi awal pot tanpa update sensorPitchArr
 
   for (int s = 0; s < NUM_SENSORS; s++) {
-    Serial.printf("[THRESH%d] %d|%d|%d|%d\n", s+1,
-      thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3]);
+    Serial.printf("[THRESH%d] %d|%d|%d|%d | dir=%+d\n", s+1,
+      thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3], hitDir[s]);
   }
 
   Serial.printf("[DEBUG] NAV=%d SEL=%d BPMNAV=%d POT=%d PITCHNAV=%d PITCHPOT=%d\n",
@@ -195,15 +201,17 @@ void calibrateBaseline() {
     peakDev[s]  = 0;
     Serial.printf("[INIT S%d] baseline=%d\n", s+1, baseline[s]);
   }
-  baselineDone = true;
-  lastBaselineTime = millis();
   Serial.println("[CAL] Selesai.");
 }
 
 // ── Compute LED level ──────────────────────────────────────────
+// Hanya kira hit jika deviasi dalam arah yang betul (hitDir)
+// Ini elak false trigger dari noise arah lawan
 int computeLed(int sIdx, int16_t dev) {
+  int signedDev = dev * hitDir[sIdx];   // positifkan jika arah betul
+  if (signedDev <= 0) return 0;         // arah salah → bukan hit
   for (int lv = 3; lv >= 0; lv--)
-    if (abs(dev) >= thresh[sIdx][lv]) return lv + 1;
+    if (signedDev >= thresh[sIdx][lv]) return lv + 1;
   return 0;
 }
 
@@ -287,6 +295,14 @@ void handleCommand() {
       potBpmPrev = val;
       Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, val);
     }
+  } else if (cmd.startsWith("D") && cmd.length() >= 3) {
+    // Tukar arah hit sensor: D<1-8><+|->  contoh: D1-  D5+
+    int s  = cmd.charAt(1) - '1';
+    char d = cmd.charAt(2);
+    if (s >= 0 && s < NUM_SENSORS && (d == '+' || d == '-')) {
+      hitDir[s] = (d == '+') ? +1 : -1;
+      Serial.printf("[DIR S%d] hitDir=%+d\n", s+1, hitDir[s]);
+    }
   } else if (cmd.startsWith("T") && cmd.indexOf('=') > 0) {
     // Format: T<sensor><level>=<val>
     // Sensor 1–9: T11=100 (S1,L1), T81=500 (S8,L1)
@@ -310,9 +326,6 @@ void loop() {
   pollButtons();
 
   // 2. Baca sensor tiap 2ms — peak detection sahaja
-  // Baseline TIDAK diupdate di sini — rolling baseline menyebabkan baseline
-  // drift ke posisi magnet → bila magnet diangkat, abs(dev) besar → bunyi lengket
-  // Baseline diurus oleh: calibrateBaseline() at boot + auto-recal 5 minit
   if (now - lastSampleTime >= SAMPLE_INTERVAL_MS) {
     lastSampleTime = now;
     for (int s = 0; s < NUM_SENSORS; s++) {
@@ -364,36 +377,15 @@ void loop() {
       peakDev[s] = 0;
     }
 
-    // Auto re-calibrate bila semua sensor idle (setiap 30 saat)
-    // Ambil median 20 sample — lebih tepat dari single reading
-    if (baselineDone && now - lastBaselineTime > BASELINE_INTERVAL_MS) {
-      bool allIdle = true;
-      for (int s = 0; s < NUM_SENSORS; s++)
-        if (led[s] > 0) { allIdle = false; break; }
-      if (allIdle) {
-        int16_t buf[20];
-        for (int s = 0; s < NUM_SENSORS; s++) {
-          for (int n = 0; n < 20; n++) { buf[n] = readSensor(s); delay(2); }
-          sortArr(buf, 20);
-          int16_t med = buf[10];
-          // Hanya update jika perbezaan kecil — elak lompatan besar
-          if (abs(med - baseline[s]) < 200) {
-            baseline[s] = med;
-            Serial.printf("[AUTO S%d] baseline=%d\n", s+1, baseline[s]);
-          }
-        }
-        lastBaselineTime = now;
-      }
-    }
   }
 
   // 4. Cek pergerakan potensio BPM setiap 100ms
-  //    Hanya update BPM bila pot BERGERAK ≥ 2 BPM dari bacaan sebelum
+  //    Hanya update BPM bila pot BERGERAK ≥ 3 BPM dari bacaan sebelum
   //    Sensor lain TIDAK terjejas — setiap sensor simpan BPM sendiri
   if (now - lastBpmSendTime >= BPM_SEND_INTERVAL_MS) {
     lastBpmSendTime = now;
     int potBpm = readBpm();
-    if (abs(potBpm - potBpmPrev) >= 2) {
+    if (abs(potBpm - potBpmPrev) >= 3) {
       potBpmPrev = potBpm;
       sensorBpmArr[bpmSel] = potBpm;  // update hanya sensor yang dipilih
       Serial.printf("[BPMCTRL]%d|%d\n", bpmSel, potBpm);
