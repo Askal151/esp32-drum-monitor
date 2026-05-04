@@ -1,39 +1,24 @@
 /**
  * drum_monitor.ino — ESP32 Drum Monitor
  * Sensor : 8x Hall Effect
- *   ADS1015 @ 0x48 (ADDR=GND) — S1–S4 (A0–A3)
- *   ADS1115 @ 0x49 (ADDR=VDD) — S5–S8 (A0–A3)
- * Button NAV      : GPIO 26  — tekan untuk next sample
- * Button SEL      : GPIO 25  — tekan untuk simpan/confirm sample
- * Button BPMNAV   : GPIO 27  — tekan untuk pilih sensor BPM (S1→S2→...→S8→S1)
- * Potensio BPM    : GPIO 34  — putar untuk ubah BPM sensor dipilih (40–200 BPM)
- * Button PITCHNAV : GPIO 32  — tekan untuk pilih sensor Pitch (S1→S2→...→S8→S1)
- * Potensio Pitch  : GPIO 35  — putar untuk ubah Pitch sensor dipilih (-12..+12 semitone)
  *
- * CATATAN PIN:
- *   GPIO 25/26/27/18 = mendukung INPUT_PULLUP (active LOW)
- *   GPIO 34/35       = ADC1, input-only, untuk potensio
- *   I2C : SDA=21, SCL=22 (kongsi oleh kedua-dua ADS)
- *   ADS1015 ADDR pin → GND  (alamat 0x48) — GAIN_TWO, 1mV/count
- *   ADS1115 ADDR pin → VDD  (alamat 0x49) — GAIN_TWO, 0.0625mV/count
+ * Konfigurasi A (default): ADS1015 @ 0x48 + ADS1115 @ 0x49
+ * Konfigurasi B (DUAL_ADS1115): ADS1115 @ 0x48 + ADS1115 @ 0x49
  *
- * Serial Output @ 115200:
- *   HALL8|adc1|dev1|led1|...|adc8|dev8|led8  (24 nilai)
- *   [BTN]NAV           — button NAV ditekan  (GPIO 26)
- *   [BTN]SEL           — button SEL ditekan  (GPIO 25)
- *   [BPMCTRL]sel|bpm   — BPM semasa (setiap 100ms), sel=0–7
- *   [PITCHCTRL]sel|pitch — Pitch semasa (setiap 100ms), sel=0–7, pitch=-12..+12
- *
- * Threshold:
- *   S1–S4 (ADS1015, 12-bit): level 1 = 40 counts (~80mV)
- *   S5–S8 (ADS1115, 16-bit): level 1 = 640 counts (~80mV, ×16)
+ * Pilih konfigurasi di platformio.ini:
+ *   env:esp32dev         → Konfigurasi A
+ *   env:esp32dev_dual1115 → Konfigurasi B (build_flags = -DDUAL_ADS1115)
  */
 
 #include <Wire.h>
 #include <Adafruit_ADS1X15.h>
 
 // ── ADS chips ──────────────────────────────────────────────────
-Adafruit_ADS1015 ads1;   // 0x48 — S1–S4
+#ifdef DUAL_ADS1115
+Adafruit_ADS1115 ads1;   // 0x48 — S1–S4 (ADS1115, 16-bit)
+#else
+Adafruit_ADS1015 ads1;   // 0x48 — S1–S4 (ADS1015, 12-bit)
+#endif
 Adafruit_ADS1115 ads2;   // 0x49 — S5–S8
 
 // ── Baca ADC mengikut indeks sensor ────────────────────────────
@@ -61,11 +46,22 @@ inline int16_t readSensor(int s) {
 #define SERIAL_INTERVAL_MS   20
 #define SAMPLE_INTERVAL_MS   2
 
-// S1–S4: ADS1015 (1mV/count @ GAIN_TWO)
-// S5–S8: ADS1115 (0.0625mV/count @ GAIN_TWO)
-// Threshold dikira dari noise floor sesi log 20260505:
-//   S1-S4 noise max=65 → L1=80(1.2×), L2=130, L3=180, L4=200
-//   S5-S8 noise max=87 → L1=384(4.4×), L2=960, L3=1920, L4=3200
+// Threshold dikira dari noise floor:
+//   ADS1015 (1mV/count):   S1-S4 noise max=65 → L1=80
+//   ADS1115 (0.0625mV/count): S5-S8 noise max=87 → L1=384
+// DUAL_ADS1115: semua 8 sensor guna skala ADS1115
+#ifdef DUAL_ADS1115
+int thresh[NUM_SENSORS][4] = {
+  {384, 960, 1920, 3200},  // S1
+  {384, 960, 1920, 3200},  // S2
+  {384, 960, 1920, 3200},  // S3
+  {384, 960, 1920, 3200},  // S4
+  {384, 960, 1920, 3200},  // S5
+  {384, 960, 1920, 3200},  // S6
+  {384, 960, 1920, 3200},  // S7
+  {384, 960, 1920, 3200},  // S8
+};
+#else
 int thresh[NUM_SENSORS][4] = {
   {80,  130, 180, 200},    // S1
   {80,  130, 180, 200},    // S2
@@ -76,6 +72,7 @@ int thresh[NUM_SENSORS][4] = {
   {384, 960, 1920, 3200},  // S7
   {384, 960, 1920, 3200},  // S8
 };
+#endif
 
 // Arah deviasi yang sah bagi setiap sensor apabila magnet mendekat:
 //  +1 = dev mesti POSITIF (magnet menaikkan bacaan ADC)
@@ -137,13 +134,22 @@ void setup() {
 
   Wire.begin();
 
-  // ADS1015 @ 0x48
+  // ads1 @ 0x48
   if (!ads1.begin(0x48)) {
+#ifdef DUAL_ADS1115
+    Serial.println("[ERR] ADS1115 (0x48) tidak ditemui! Pastikan ADDR pin = GND");
+#else
     Serial.println("[ERR] ADS1015 (0x48) tidak ditemui!");
+#endif
     while (1) delay(500);
   }
+#ifdef DUAL_ADS1115
+  ads1.setGain(GAIN_TWO);
+  ads1.setDataRate(RATE_ADS1115_860SPS);
+#else
   ads1.setGain(GAIN_TWO);   // ±2.048V — 1mV/count, 2× lebih sensitif
   ads1.setDataRate(RATE_ADS1015_1600SPS);  // 3300→1600 kurangkan noise antara channel
+#endif
 
   // ADS1115 @ 0x49
   if (!ads2.begin(0x49)) {
