@@ -39,38 +39,48 @@ inline int16_t readSensor(int s) {
 
 // ── Sensor config ──────────────────────────────────────────────
 #define NUM_SENSORS          8
-#define SAMPLES_BASELINE     200        // lebih banyak sample = baseline lebih tepat
+#define SAMPLES_BASELINE     500        // 500 × 2ms = 1s per sensor (lebih stabil)
+#define CAL_DELAY_MS         3000       // tunggu 3s sebelum kalibrasi (bagi drum settle)
 #define DEBOUNCE_MS          80
 
 // Output ke serial tiap 20ms (50Hz), baca sensor tiap 2ms (500Hz)
 #define SERIAL_INTERVAL_MS   20
 #define SAMPLE_INTERVAL_MS   2
 
-// Threshold dikira dari noise floor:
-//   ADS1015 (1mV/count):   S1-S4 noise max=65 → L1=80
-//   ADS1115 (0.0625mV/count): S5-S8 noise max=87 → L1=384
+// Adaptive baseline: perlahan betulkan drift suhu/elektrik semasa sensor idle
+// alpha = 5/1000 = 0.005 → lebih lambat, kurang hanyut dari gangguan seketika
+// +DEN/2 rounding: elak dead zone
+#define ADAPT_NUM  5
+#define ADAPT_DEN  1000
+
+// Tiada auto-recal — sensor kekal ON selagi magnet ada, OFF bila magnet jauh
+// Jika baseline hanyut, hantar command 'r' untuk kalibrasi semula manual
+
+// Threshold dikira dari noise floor + margin:
+//   ADS1015 (1mV/count):   S1-S4 noise max=±4 cnt → L1=80 (20× margin, 80mV min)
+//   ADS1115 (0.0625mV/count): S5-S8 noise max=±15 cnt → L1=200 (13× margin, 12.5mV min)
 // DUAL_ADS1115: semua 8 sensor guna skala ADS1115
 #ifdef DUAL_ADS1115
 int thresh[NUM_SENSORS][4] = {
-  {384, 960, 1920, 3200},  // S1
-  {384, 960, 1920, 3200},  // S2
-  {384, 960, 1920, 3200},  // S3
-  {384, 960, 1920, 3200},  // S4
-  {384, 960, 1920, 3200},  // S5
-  {384, 960, 1920, 3200},  // S6
-  {384, 960, 1920, 3200},  // S7
-  {384, 960, 1920, 3200},  // S8
+  {200,  600, 1500, 3000},  // S1
+  {200,  600, 1500, 3000},  // S2
+  {200,  600, 1500, 3000},  // S3
+  {200,  600, 1500, 3000},  // S4
+  {200,  600, 1500, 3000},  // S5
+  {200,  600, 1500, 3000},  // S6
+  {200,  600, 1500, 3000},  // S7
+  {200,  600, 1500, 3000},  // S8
 };
 #else
 int thresh[NUM_SENSORS][4] = {
-  {80,  130, 180, 200},    // S1
-  {80,  130, 180, 200},    // S2
-  {80,  130, 180, 200},    // S3
-  {80,  130, 180, 200},    // S4
-  {384, 960, 1920, 3200},  // S5
-  {384, 960, 1920, 3200},  // S6
-  {384, 960, 1920, 3200},  // S7
-  {384, 960, 1920, 3200},  // S8
+  {80,  200,  400,  700},  // S1  (ADS1015 1mV/count, noise floor ±4)
+  {80,  200,  400,  700},  // S2
+  {80,  200,  400,  700},  // S3
+  {80,  200,  400,  700},  // S4
+  {200, 600, 1500, 3000},  // S5  (ADS1115 0.0625mV/count, noise floor ±15)
+  {200, 600, 1500, 3000},  // S6
+  {200, 600, 1500, 3000},  // S7
+  {200, 600, 1500, 3000},  // S8
 };
 #endif
 
@@ -78,21 +88,23 @@ int thresh[NUM_SENSORS][4] = {
 //  +1 = dev mesti POSITIF (magnet menaikkan bacaan ADC)
 //  -1 = dev mesti NEGATIF (magnet menurunkan bacaan ADC)
 // Disahkan dari dua sesi log (20260504 + 20260505)
-int hitDir[NUM_SENSORS] = { -1, +1, -1, +1, +1, -1, -1, -1 };
+int hitDir[NUM_SENSORS] = { -1, +1, -1, +1, +1, +1, +1, +1 };
 
-int16_t baseline[NUM_SENSORS] = {0};
+int16_t baseline[NUM_SENSORS]   = {0};
+int16_t noiseFloor[NUM_SENSORS] = {0};  // diukur semasa kalibrasi, dipakai set threshold
 
 // ── Peak detection state ───────────────────────────────────────
 int16_t peakAdc[NUM_SENSORS] = {0};
 int16_t peakDev[NUM_SENSORS] = {0};
 
-// ── Hysteresis counter (cegah cross-trigger antara sensor) ────
-// LED hanya aktif bila devasi kekal > threshold 2 frame berturut-turut (40ms)
-// LED hanya mati bila devasi < threshold 2 frame berturut-turut (40ms)
-uint8_t hitConfirm[NUM_SENSORS] = {0};   // frame counter naik
-uint8_t idleConfirm[NUM_SENSORS] = {0};  // frame counter turun
-int     ledState[NUM_SENSORS]    = {0};  // LED state selepas hysteresis
-#define CONFIRM_FRAMES 2
+// ── Hysteresis counter ────────────────────────────────────────
+// ON  cepat : 1 frame (20ms)  — respons segera bila magnet dekat
+// OFF lambat: 5 frame (100ms) — cegah flicker bila signal magnet sedikit naik turun
+#define CONFIRM_ON  2
+#define CONFIRM_OFF 5
+uint8_t hitConfirm[NUM_SENSORS]  = {0};
+uint8_t idleConfirm[NUM_SENSORS] = {0};
+int     ledState[NUM_SENSORS]    = {0};
 
 // ── Debounce state ─────────────────────────────────────────────
 bool          prevBtnNav      = HIGH;
@@ -170,8 +182,8 @@ void setup() {
   potPitchPrev = readPitch();   // rekod posisi awal pot tanpa update sensorPitchArr
 
   for (int s = 0; s < NUM_SENSORS; s++) {
-    Serial.printf("[THRESH%d] %d|%d|%d|%d | dir=%+d\n", s+1,
-      thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3], hitDir[s]);
+    Serial.printf("[THRESH%d] %d|%d|%d|%d | dir=%+d | noise=±%d\n", s+1,
+      thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3], hitDir[s], noiseFloor[s]);
   }
 
   Serial.printf("[DEBUG] NAV=%d SEL=%d BPMNAV=%d POT=%d PITCHNAV=%d PITCHPOT=%d\n",
@@ -191,21 +203,64 @@ void sortArr(int16_t* arr, int n) {
       if (arr[j] < arr[i]) { int16_t t = arr[i]; arr[i] = arr[j]; arr[j] = t; }
 }
 
-// ── Calibrate baseline (median filter) ────────────────────────
-// Median lebih tahan outlier berbanding average
+// ── Calibrate baseline (serentak semua sensor, median filter) ─
+// Semua 8 sensor dikalibrasi dalam window masa yang sama
+// supaya drift posisi magnet tidak mempengaruhi kalibrasi berbeza sensor
 void calibrateBaseline() {
-  Serial.println("[CAL] Mengambil baseline...");
-  int16_t buf[SAMPLES_BASELINE];
+  // Tunggu drum/magnet settle sebelum ambil sample
+  Serial.println("[CAL] Letakkan drum dalam posisi rehat...");
+  for (int i = CAL_DELAY_MS / 1000; i > 0; i--) {
+    Serial.printf("[CAL] %ds...\n", i);
+    delay(1000);
+  }
+
+  // Warmup ADC — bagi chip keluar dari power-down dan settle sebelum ambil baseline
+  // Tanpa ini, bacaan awal ~100 count lebih rendah dari steady-state
+  Serial.println("[CAL] Warming up ADC...");
+  for (int n = 0; n < 150; n++) {
+    for (int s = 0; s < NUM_SENSORS; s++) readSensor(s);
+    delay(2);
+  }
+
+  Serial.println("[CAL] Mengambil baseline (semua sensor serentak)...");
+  // Buffer statik (500×8×2 = 8KB) — elak stack overflow
+  static int16_t buf[NUM_SENSORS][SAMPLES_BASELINE];
+
+  for (int n = 0; n < SAMPLES_BASELINE; n++) {
+    for (int s = 0; s < NUM_SENSORS; s++) buf[s][n] = readSensor(s);
+    delay(2);
+  }
+
+  // Sort setiap sensor, ambil median + ukur noise floor
+  int16_t tmp[SAMPLES_BASELINE];
   for (int s = 0; s < NUM_SENSORS; s++) {
-    for (int n = 0; n < SAMPLES_BASELINE; n++) {
-      buf[n] = readSensor(s);
-      delay(2);
-    }
-    sortArr(buf, SAMPLES_BASELINE);
-    baseline[s] = buf[SAMPLES_BASELINE / 2];   // median
+    memcpy(tmp, buf[s], sizeof(tmp));
+    sortArr(tmp, SAMPLES_BASELINE);
+    baseline[s] = tmp[SAMPLES_BASELINE / 2];
     peakAdc[s]  = baseline[s];
     peakDev[s]  = 0;
-    Serial.printf("[INIT S%d] baseline=%d\n", s+1, baseline[s]);
+
+    // Noise floor = sisihan max dalam 5th–95th percentile (elak outlier)
+    // Ini anggaran ~1.65σ → L1 = 8× = ~13σ margin dari noise
+    int dn = abs((int)baseline[s] - (int)tmp[SAMPLES_BASELINE * 5 / 100]);
+    int dp = abs((int)tmp[SAMPLES_BASELINE * 95 / 100] - (int)baseline[s]);
+    int noise = max(dn, dp);
+    if (noise < 1) noise = 1;
+    noiseFloor[s] = (int16_t)noise;
+
+    // Auto-set threshold berdasarkan noise floor setiap sensor
+    // L1=12× → margin lebih lebar dari noise, elak false trigger
+    // L2=30× → sederhana
+    // L3=75× → kuat
+    // L4=150× → sangat kuat
+    thresh[s][0] = max(noise * 12,   50);
+    thresh[s][1] = max(noise * 30,  150);
+    thresh[s][2] = max(noise * 75,  400);
+    thresh[s][3] = max(noise * 150, 800);
+
+    Serial.printf("[INIT S%d] base=%d noise=±%d thr=%d|%d|%d|%d\n", s+1,
+      baseline[s], noise,
+      thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3]);
   }
   Serial.println("[CAL] Selesai.");
 }
@@ -284,8 +339,9 @@ void handleCommand() {
     calibrateBaseline();
   } else if (cmd == "s") {
     for (int s = 0; s < NUM_SENSORS; s++) {
-      Serial.printf("[STATUS S%d] base=%d thr=%d|%d|%d|%d\n", s+1,
-        baseline[s], thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3]);
+      Serial.printf("[STATUS S%d] base=%d noise=±%d thr=%d|%d|%d|%d dir=%+d\n", s+1,
+        baseline[s], noiseFloor[s],
+        thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3], hitDir[s]);
     }
     Serial.printf("[DEBUG] NAV=%d SEL=%d\n",
       digitalRead(BTN_NAV), digitalRead(BTN_SEL));
@@ -321,6 +377,14 @@ void handleCommand() {
       Serial.printf("[THRESH%d] %d|%d|%d|%d\n", s+1,
         thresh[s][0], thresh[s][1], thresh[s][2], thresh[s][3]);
     }
+  } else if (cmd.startsWith("B") && cmd.indexOf('=') > 0) {
+    // Manual baseline override: B<sensor>=<val>, contoh: B3=1024
+    int s   = cmd.charAt(1) - '1';
+    int val = cmd.substring(cmd.indexOf('=') + 1).toInt();
+    if (s >= 0 && s < NUM_SENSORS && val != 0) {
+      baseline[s] = (int16_t)val;
+      Serial.printf("[BASE S%d] baseline=%d\n", s+1, baseline[s]);
+    }
   }
 }
 
@@ -353,15 +417,13 @@ void loop() {
       int raw = computeLed(s, peakDev[s]);
 
       if (raw > 0) {
-        // Devasi hadir — kira frame naik
-        if (hitConfirm[s] < CONFIRM_FRAMES) hitConfirm[s]++;
+        if (hitConfirm[s] < CONFIRM_ON) hitConfirm[s]++;
         idleConfirm[s] = 0;
-        if (hitConfirm[s] >= CONFIRM_FRAMES) ledState[s] = raw;
+        if (hitConfirm[s] >= CONFIRM_ON) ledState[s] = raw;
       } else {
-        // Devasi hilang — kira frame turun
-        if (idleConfirm[s] < CONFIRM_FRAMES) idleConfirm[s]++;
+        if (idleConfirm[s] < CONFIRM_OFF) idleConfirm[s]++;
         hitConfirm[s] = 0;
-        if (idleConfirm[s] >= CONFIRM_FRAMES) ledState[s] = 0;
+        if (idleConfirm[s] >= CONFIRM_OFF) ledState[s] = 0;
       }
 
       led[s] = ledState[s];
@@ -376,6 +438,20 @@ void loop() {
       peakAdc[5], peakDev[5], led[5],
       peakAdc[6], peakDev[6], led[6],
       peakAdc[7], peakDev[7], led[7]);
+
+    // Adaptive baseline — EMA hanya bila sensor betul-betul idle
+    // Guard: berhenti EMA bila signal dah hampir threshold (abs dev < L1/2)
+    // Ini cegah baseline hanyut semasa ada gangguan kecil tapi belum trigger
+    for (int s = 0; s < NUM_SENSORS; s++) {
+      if (ledState[s] == 0 && abs((int)peakDev[s]) < thresh[s][0] / 2) {
+        baseline[s] = (int16_t)(
+          ((long)baseline[s] * (ADAPT_DEN - ADAPT_NUM)
+           + (long)peakAdc[s] * ADAPT_NUM
+           + ADAPT_DEN / 2)
+          / ADAPT_DEN
+        );
+      }
+    }
 
     // Reset peak selepas dihantar
     for (int s = 0; s < NUM_SENSORS; s++) {
