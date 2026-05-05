@@ -9,6 +9,7 @@
     SAMPLES, SAMPLE_FNS, getSample,
     sensorSamples, selectedSensor, cursorIdx,
     saveSample, deleteSample, openPicker,
+    KIT_PRESETS, loadKitPreset,
   } from './sampleStore.js';
   const SENSOR_NAMES  = ['Congkak 1','Congkak 2','Congkak 3','Congkak 4','Congkak 5','Congkak 6','Congkak 7','Congkak 8'];
   const SENSOR_COLORS = ['#22d3ee','#4ade80','#f59e0b','#f472b6','#a78bfa','#fb923c','#34d399','#f87171'];
@@ -43,13 +44,28 @@
 <div class="flex flex-col gap-3 h-full bg-slate-950 rounded-lg p-3 overflow-y-auto">
 
   <!-- Header -->
-  <div class="flex items-center justify-between shrink-0">
-    <span class="text-xs font-bold tracking-widest text-slate-600">SAMPLE ASSIGN</span>
-    <button
-      class="text-xs px-2.5 py-1 rounded border border-amber-900 text-amber-400 bg-amber-950 hover:bg-amber-900 transition-colors"
-      on:click={openPicker}
-      title="Buka picker (atau tekan NAV button di ESP32)"
-    >🎵 Pilih Sample</button>
+  <div class="flex flex-col gap-2 shrink-0">
+    <div class="flex items-center justify-between">
+      <span class="text-xs font-bold tracking-widest text-slate-600">SAMPLE ASSIGN</span>
+      <button
+        class="text-xs px-2.5 py-1 rounded border border-amber-900 text-amber-400 bg-amber-950 hover:bg-amber-900 transition-colors"
+        on:click={openPicker}
+        title="Buka picker (atau tekan NAV button di ESP32)"
+      >🎵 Pilih Sample</button>
+    </div>
+
+    <!-- Kit Presets -->
+    <div class="flex items-center gap-2">
+      <span class="text-xs text-slate-600 shrink-0">Kit:</span>
+      {#each KIT_PRESETS as preset}
+        <button
+          class="text-xs px-3 py-1 rounded border font-semibold transition-colors hover:brightness-110"
+          style="border-color:{preset.color}40; color:{preset.color}; background:{preset.color}18"
+          on:click={() => loadKitPreset(preset.id)}
+          title="Load kit {preset.label} ke semua 8 sensor"
+        >{preset.label}</button>
+      {/each}
+    </div>
   </div>
 
   <!-- 8 Sensor columns -->

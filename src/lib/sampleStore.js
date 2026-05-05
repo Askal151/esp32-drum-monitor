@@ -249,6 +249,178 @@ export const BEAT_DATA = {
     hihat:  [0,   0,    0.5,  0,    0,    0,    0,    0,    0,   0,    0.5,  0,    0,   0,    0,    0.25],
   }},
 
+  // ── JAZZ ─────────────────────────────────────────────────────
+  jazz_swing: { bpm: 140, tracks: {
+    kick:  [1,   0,    0,    0,    0,    0,    0.5,  0,    0.75,0,    0,    0,    0,   0,    0.5,  0   ],
+    snare: [0,   0,    0,    0,    1,    0,    0,    0,    0,   0,    0,    0,    1,   0,    0,    0   ],
+    hihat: [0.75,0,    0.75, 0,    0.75, 0,    0.75, 0,    0.75,0,    0.75, 0,    0.75,0,    0.75, 0   ],
+    rim:   [0,   0.25, 0,    0,    0,    0,    0,    0.25, 0,   0,    0,    0,    0,   0.25, 0,    0   ],
+    cymbal:[1,   0,    0,    0,    0,    0,    0,    0,    0,   0,    0,    0,    0.75,0,    0,    0   ],
+  }},
+
+  // ── BLUES ────────────────────────────────────────────────────
+  blues_shuffle: { bpm: 88, tracks: {
+    kick:  [1,   0,    0,    0.5,  0.5,  0,    0,    0,    0.75,0,    0,    0.5,  0.5, 0,    0,    0   ],
+    snare: [0,   0,    0,    0,    1,    0,    0,    0,    0,   0,    0,    0,    1,   0,    0,    0   ],
+    hihat: [0.75,0.5,  0.75, 0.5,  0.75, 0.5,  0.75, 0.5,  0.75,0.5,  0.75, 0.5,  0.75,0.5,  0.75, 0.5 ],
+    rim:   [0,   0,    0.25, 0,    0,    0,    0,    0,    0,   0,    0.25, 0,    0,   0,    0,    0   ],
+  }},
+
+  // ── GOSPEL ───────────────────────────────────────────────────
+  gospel_4beat: { bpm: 85, tracks: {
+    kick:       [1,   0,    0,    0,    1,    0,    0,    0,    1,   0,    0,    0,    1,   0,    0,    0   ],
+    snare:      [0,   0,    0,    0,    1,    0,    0.25, 0,    0,   0,    0,    0,    1,   0,    0.5,  0   ],
+    hihat:      [0.75,0,    0.75, 0,    1,    0,    0.75, 0,    0.75,0,    0.75, 0,    1,   0,    0.75, 0.5 ],
+    clap:       [0,   0,    0,    0,    0.75, 0,    0,    0,    0,   0,    0,    0,    1,   0,    0.25, 0   ],
+    tambourine: [0.5, 0,    0.5,  0,    0.5,  0,    0.5,  0,    0.5, 0,    0.5,  0,    0.5, 0,    0.5,  0   ],
+  }},
+
+  // ── AFRO-CUBAN ───────────────────────────────────────────────
+  afrocuban_guaguanco: { bpm: 105, tracks: {
+    conga:  [1,   0,    0,    0.75, 0,    0,    0.5,  0,    1,   0,    0,    0,    0.75,0,    0.5,  0   ],
+    bongo:  [0,   0.5,  0,    0,    0.75, 0,    0,    0.5,  0,   0,    0.75, 0,    0.5, 0,    0,    0.25],
+    cowbell:[1,   0,    0.75, 0,    0.5,  0,    0,    1,    0,   0.75, 0,    0.5,  0,   1,    0,    0   ],
+    rim:    [0,   0,    0,    0.5,  0,    0.75, 0,    0,    0.5, 0,    0,    0,    0,   0,    0.75, 0   ],
+  }},
+
+  // ── CALYPSO ──────────────────────────────────────────────────
+  calypso: { bpm: 120, tracks: {
+    kick:       [0.75,0,    0,    0,    0,    0,    0.75, 0,    0,   0,    0.75, 0,    0,   0,    0,    0.5 ],
+    snare:      [0,   0,    0,    0,    0.75, 0,    0,    0,    0,   0,    0,    0,    0.75,0,    0,    0   ],
+    hihat:      [0.75,0.5,  0.75, 0.5,  0.75, 0.5,  0.75, 0.5,  0.75,0.5,  0.75, 0.5,  0.75,0.5,  0.75, 0.5 ],
+    rim:        [0,   0.5,  0,    0.5,  0,    0.5,  0,    0,    0.5, 0,    0.5,  0,    0,   0.5,  0,    0   ],
+    tambourine: [1,   0,    0.75, 0,    0.5,  0,    1,    0,    0,   0.5,  0,    0.75, 0,   0,    1,    0   ],
+  }},
+
+  // ── CUMBIA ───────────────────────────────────────────────────
+  cumbia: { bpm: 95, tracks: {
+    kick:       [1,   0,    0,    0,    0,    0,    0,    0,    1,   0,    0,    0,    0,   0,    1,    0   ],
+    snare:      [0,   0,    0,    0,    0.75, 0,    0,    0,    0,   0,    0.5,  0,    1,   0,    0,    0   ],
+    hihat:      [0.75,0,    1,    0,    0.75, 0,    1,    0,    0.75,0,    1,    0,    0.75,0,    1,    0   ],
+    conga:      [0,   0.5,  0,    0.75, 0,    0.5,  0,    0,    0.75,0,    0.5,  0,    0,   0.75, 0,    0.5 ],
+    tambourine: [0.5, 0.5,  0.5,  0.5,  0.5,  0.5,  0.5,  0.5,  0.5, 0.5,  0.5,  0.5,  0.5, 0.5,  0.5,  0.5 ],
+  }},
+
+  // ── DANCEHALL ────────────────────────────────────────────────
+  dancehall: { bpm: 90, tracks: {
+    kick808:[1,   0,    0,    0,    0,    0,    0.75, 0,    0,   0,    1,    0,    0,   0,    0.5,  0   ],
+    snare:  [0,   0,    0,    0,    0.75, 0,    0,    0.25, 0,   0,    0,    0,    1,   0,    0,    0   ],
+    hihat:  [0.5, 0.5,  0.75, 0.5,  0.5,  0.5,  0.75, 0.5,  0.5, 0.5,  0.75, 0.5,  0.5, 0.5,  1,    0.5 ],
+    rim:    [0,   0,    0.5,  0,    0,    0.5,  0,    0,    0,   0,    0.5,  0,    0.5, 0,    0,    0.25],
+  }},
+
+  // ── INDIA KLASIK ─────────────────────────────────────────────
+  // Teentaal (16 matra): conga=dha/dhin, bongo=na/tin, rim=ke
+  tabla_teentaal: { bpm: 80, tracks: {
+    conga: [1,   0,    0,    0.5,  0,    0,    0.75, 0,    0.75,0,    0,    0,    1,   0,    0,    0.5 ],
+    bongo: [0,   0.75, 0,    0,    1,    0,    0,    0.5,  0,   0.5,  0,    0,    0.75,0,    0.5,  0   ],
+    rim:   [0,   0,    0.5,  0,    0,    0.25, 0,    0,    0.5, 0,    0,    0.25, 0,   0,    0,    0   ],
+  }},
+
+  // ── MIDDLE EAST ──────────────────────────────────────────────
+  // Maqsoum: 808=doum, conga=tak, rim=ka
+  darbuka_maqsoum: { bpm: 110, tracks: {
+    kick808:[1,   0,    0,    0,    0,    0.5,  0,    0,    1,   0,    0,    0,    0,   0.75, 0,    0   ],
+    conga:  [0,   0,    0.75, 0,    1,    0,    0,    0.5,  0,   0,    0.75, 0,    1,   0,    0,    0.5 ],
+    rim:    [0,   0,    0,    0.5,  0,    0,    0.5,  0,    0,   0,    0,    0.5,  0,   0,    0.5,  0   ],
+  }},
+
+  // ── JEPUN ────────────────────────────────────────────────────
+  // Taiko: gordang=o-daiko, tom=shime-daiko, cymbal penanda bar
+  taiko_japanese: { bpm: 100, tracks: {
+    gordang:[1,   0,    0,    0,    0,    0,    0,    0,    0.75,0,    0,    0,    0,   0,    0,    0.5 ],
+    tom:    [0,   0,    0.75, 0,    1,    0,    0,    0,    0,   0,    0.75, 0,    0.75,0,    0,    0   ],
+    rim:    [0,   0.5,  0,    0,    0,    0.5,  0,    0.25, 0,   0.5,  0,    0,    0,   0.5,  0.75, 0   ],
+    cymbal: [0,   0,    0,    0,    0,    0,    0,    0,    0,   0,    0,    0,    1,   0,    0,    0   ],
+  }},
+
+  // ── BALI ─────────────────────────────────────────────────────
+  // Gamelan Bali: hesek interlocking, taganing melody, odap bass
+  gamelan_bali: { bpm: 96, tracks: {
+    hesek:   [0.75,0.5,  0.75, 0.5,  0.75, 0.5,  0.75, 0.5,  0.75,0.5,  0.75, 0.5,  0.75,0.5,  0.75, 0.5 ],
+    taganing:[0,   0,    0.5,  0,    0.75, 0,    0.5,  0,    0,   0.75, 0,    0,    0.5, 0,    1,    0   ],
+    cymbal:  [1,   0,    0,    0,    0,    0,    0,    0,    0.75,0,    0,    0,    0,   0,    0,    0   ],
+    odap:    [0,   0,    0,    0.5,  0,    0,    0.5,  0,    0,   0.5,  0,    0,    0.75,0,    0,    0.25],
+  }},
+
+  // ── FOOTWORK ─────────────────────────────────────────────────
+  // Chicago Juke/Footwork: kick polyrhythm, hihat 16th penuh
+  footwork_juke: { bpm: 160, tracks: {
+    kick:  [1,   0,    1,    0,    0,    0,    1,    0,    1,   0,    0,    0,    1,   0,    1,    0   ],
+    snare: [0,   0,    0,    0,    1,    0,    0,    0,    0,   1,    0,    0,    1,   0,    0,    1   ],
+    hihat: [1,   1,    1,    1,    1,    1,    1,    1,    1,   1,    1,    1,    1,   1,    1,    1   ],
+    clap:  [0,   0,    0,    0,    0,    0,    1,    0,    0,   0,    0,    0,    0,   0,    1,    0   ],
+  }},
+
+  // ── GRIME ────────────────────────────────────────────────────
+  grime: { bpm: 140, tracks: {
+    kick808:[1,   0,    0,    0,    0,    0.5,  0,    0,    0.75,0,    0,    0,    0,   0,    0.5,  0   ],
+    esnare: [0,   0,    0,    0,    0.75, 0,    0,    0,    0,   0,    0.5,  0,    1,   0,    0,    0.25],
+    hihat:  [0.75,0.5,  0,    0.5,  0.75, 0,    0.5,  0,    0.75,0.5,  0,    0.5,  1,   0,    0.5,  0   ],
+    rim:    [0,   0,    0.5,  0,    0,    0.5,  0,    0,    0,   0,    0.5,  0,    0.5, 0,    0,    0   ],
+  }},
+
+  // ── LO-FI ────────────────────────────────────────────────────
+  lofi_hiphop: { bpm: 75, tracks: {
+    kick:  [1,   0,    0,    0,    0,    0,    0,    0,    0.75,0,    0,    0.25, 0,   0,    0.5,  0   ],
+    snare: [0,   0,    0,    0,    0.5,  0,    0.25, 0,    0,   0,    0,    0,    1,   0,    0,    0.25],
+    hihat: [0.5, 0,    0.5,  0,    0.5,  0,    0.5,  0.25, 0.5, 0,    0.5,  0,    0.5, 0,    0.75, 0   ],
+    rim:   [0,   0.25, 0,    0,    0,    0,    0,    0.25, 0,   0.25, 0,    0,    0,   0,    0,    0   ],
+  }},
+
+  // ── NUSANTARA ACEH ───────────────────────────────────────────
+  // Rapai Geleng / Saman: rebana interlocking, bedug bass, hesek dense
+  nusantara_aceh: { bpm: 112, tracks: {
+    rebana:     [1,   0,    0,    0.75, 0.5,  0,    1,    0,    0.75,0,    0.5,  0,    1,   0,    0,    0.75],
+    bedug:      [1,   0,    0,    0,    0,    0,    0,    0,    0.75,0,    0,    0,    0,   0,    0,    0.5 ],
+    hesek:      [0.75,0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75, 0.75,0.75, 0.75, 0.75, 0.75,0.75, 0.75, 0.75],
+    tambourine: [0,   0.5,  0,    0.5,  0,    0.5,  0,    0.5,  0,   0.5,  0,    0.5,  0,   0.5,  0,    0.5 ],
+  }},
+
+  // ── NUSANTARA TORAJA ─────────────────────────────────────────
+  // Pa'randing: gordang prosesi, taganing melody, hesek konstan
+  nusantara_toraja: { bpm: 95, tracks: {
+    gordang: [1,   0,    0,    0,    0.75, 0,    0,    0,    0,   0,    1,    0,    0.75,0,    0.5,  0   ],
+    taganing:[0,   0.5,  0,    0.75, 0,    0.5,  0,    0,    0.75,0,    0,    0.5,  0,   0.75, 0,    0   ],
+    hesek:   [0.5, 0.5,  0.5,  0.5,  0.5,  0.5,  0.5,  0.5,  0.5, 0.5,  0.5,  0.5,  0.5, 0.5,  0.5,  0.5 ],
+    odap:    [0,   0,    0.75, 0,    0,    0,    0,    0.5,  0,   0,    0.75, 0,    0.5, 0,    0,    0   ],
+  }},
+
+  // ── NUSANTARA PAPUA ──────────────────────────────────────────
+  // Tifa: conga=tifa besar, bongo=tifa kecil, rim=sisi
+  nusantara_papua: { bpm: 108, tracks: {
+    conga:      [1,   0,    0,    0.5,  0,    0.75, 0,    0,    1,   0,    0,    0,    0.75,0,    0.5,  0   ],
+    bongo:      [0,   0.5,  0,    0,    0.75, 0,    0.5,  0,    0,   0.5,  0.75, 0,    0,   0.5,  0,    0.75],
+    rim:        [0,   0,    0.5,  0,    0,    0.5,  0,    0.25, 0,   0,    0,    0.5,  0,   0.25, 0,    0   ],
+    tambourine: [0.5, 0,    0.5,  0,    0.5,  0,    0.5,  0,    0.5, 0,    0.5,  0,    0.5, 0,    0.5,  0   ],
+  }},
+
+  // ── MAMBO ────────────────────────────────────────────────────
+  // Fast Afro-Cuban Mambo: conga tumbao, bongo martillo, cowbell clave
+  latin_mambo: { bpm: 195, tracks: {
+    conga:  [0,   0.75, 0,    0,    1,    0,    0,    0.5,  0,   0.75, 0,    0,    1,   0,    0,    0.5 ],
+    bongo:  [1,   0,    0.5,  0,    0,    0.75, 0,    0,    1,   0,    0.5,  0,    0,   0.5,  0,    0.75],
+    cowbell:[1,   0,    0.75, 0,    0.5,  0,    1,    0,    0,   0.75, 0,    0.5,  0,   1,    0,    0   ],
+    kick:   [1,   0,    0,    0,    0,    0,    0,    0,    0.75,0,    0,    0,    0,   0,    0,    0   ],
+  }},
+
+  // ── K-POP ────────────────────────────────────────────────────
+  kpop_hype: { bpm: 130, tracks: {
+    kick808:[1,   0,    0,    0,    1,    0,    0,    0,    1,   0,    0,    0.25, 1,   0,    0.5,  0   ],
+    esnare: [0,   0,    0,    0,    0.75, 0,    0,    0.25, 0,   0,    0.25, 0,    1,   0,    0,    0.5 ],
+    hihat:  [0.75,0.5,  1,    0.5,  0.75, 0.5,  1,    0.5,  0.75,0.5,  1,    0.5,  0.75,0.5,  1,    0.5 ],
+    clap:   [0,   0,    0,    0,    0.75, 0,    0,    0,    0,   0,    0,    0,    1,   0,    0,    0.25],
+  }},
+
+  // ── RITUAL AMBIENT ───────────────────────────────────────────
+  // Seremonial perlahan: gordang jarang, cymbal sustain, hesek nafas, odap jawab
+  ambient_ritual: { bpm: 60, tracks: {
+    gordang:[1,   0,    0,    0,    0,    0,    0,    0,    0,   0,    0,    0,    0,   0,    0.5,  0   ],
+    cymbal: [0,   0,    0,    0,    0,    0,    0,    0,    0.75,0,    0,    0,    0,   0,    0,    0   ],
+    hesek:  [0.5, 0,    0,    0,    0.5,  0,    0,    0,    0.5, 0,    0,    0,    0.5, 0,    0,    0.25],
+    odap:   [0,   0,    0.5,  0,    0,    0,    0,    0,    0,   0.5,  0,    0,    0,   0,    0,    0   ],
+  }},
+
 };
 
 // ── Metadata UI untuk 30 pola beat ──────────────────────────────
@@ -291,6 +463,33 @@ export const SAMPLES = [
   { id: 'fusion_tropical',        label: 'Tropical Fusion',     group: 'Fusion',      icon: '🎷', color: '#ec4899' },
   // Ambient
   { id: 'ambient_sparse',         label: 'Ambient Sparse',      group: 'Ambient',     icon: '🌙', color: '#94a3b8' },
+  // Jazz / Blues / Gospel
+  { id: 'jazz_swing',             label: 'Jazz Swing',          group: 'Jazz',        icon: '🎷', color: '#fbbf24' },
+  { id: 'blues_shuffle',          label: 'Blues Shuffle',       group: 'Jazz',        icon: '🎷', color: '#d97706' },
+  { id: 'gospel_4beat',           label: 'Gospel 4-Beat',       group: 'Jazz',        icon: '🎷', color: '#92400e' },
+  // Afro-Cuban / Caribbean
+  { id: 'afrocuban_guaguanco',    label: 'Guaguancó',           group: 'Latin',       icon: '🥁', color: '#dc2626' },
+  { id: 'calypso',                label: 'Calypso',             group: 'Latin',       icon: '🥁', color: '#b91c1c' },
+  { id: 'cumbia',                 label: 'Cumbia',              group: 'Latin',       icon: '🥁', color: '#991b1b' },
+  { id: 'latin_mambo',            label: 'Mambo',               group: 'Latin',       icon: '🥁', color: '#7f1d1d' },
+  // Reggae / Dancehall
+  { id: 'dancehall',              label: 'Dancehall',           group: 'World',       icon: '🌍', color: '#15803d' },
+  // Electronic
+  { id: 'footwork_juke',          label: 'Footwork / Juke',     group: 'Electronic',  icon: '🔊', color: '#0284c7' },
+  { id: 'grime',                  label: 'Grime',               group: 'Electronic',  icon: '🔊', color: '#075985' },
+  { id: 'lofi_hiphop',            label: 'Lo-Fi Hip Hop',       group: 'Hip Hop',     icon: '🎤', color: '#0e7490' },
+  { id: 'kpop_hype',              label: 'K-Pop Hype',          group: 'Electronic',  icon: '🔊', color: '#7e22ce' },
+  // Ethnic World
+  { id: 'tabla_teentaal',         label: 'Tabla Teentaal',      group: 'Ethnic',      icon: '🪘', color: '#ea580c' },
+  { id: 'darbuka_maqsoum',        label: 'Darbuka Maqsoum',     group: 'Ethnic',      icon: '🪘', color: '#c2410c' },
+  { id: 'taiko_japanese',         label: 'Taiko',               group: 'Ethnic',      icon: '🪘', color: '#b45309' },
+  { id: 'gamelan_bali',           label: 'Gamelan Bali',        group: 'Ethnic',      icon: '🪘', color: '#15803d' },
+  // Nusantara tambahan
+  { id: 'nusantara_aceh',         label: 'Rapai Aceh',          group: 'Nusantara',   icon: '🪘', color: '#0f766e' },
+  { id: 'nusantara_toraja',       label: 'Pa\'randing Toraja',  group: 'Nusantara',   icon: '🪘', color: '#0369a1' },
+  { id: 'nusantara_papua',        label: 'Tifa Papua',          group: 'Nusantara',   icon: '🪘', color: '#4338ca' },
+  // Ambient
+  { id: 'ambient_ritual',         label: 'Ambient Ritual',      group: 'Ambient',     icon: '🌙', color: '#475569' },
 ];
 
 // ── Fungsi instrument (digunakan oleh beat sequencer) ────────────
@@ -332,6 +531,63 @@ export const SAMPLE_FNS = {
   has_a4:      (t, v, r = 1.0) => scheduleHasapi(440.00 * (r || 1), t, v),
   // WAV
 };
+
+// ── Kit Presets — 8 beat patterns untuk satu kit penuh ──────────
+export const KIT_PRESETS = [
+  {
+    id: 'western',
+    label: 'Western',
+    color: '#22d3ee',
+    samples: [
+      'rock_basic',
+      'pop_dance',
+      'funk_groove',
+      'jazz_swing',
+      'blues_shuffle',
+      'hiphop_boom',
+      'house_classic',
+      'latin_conga',
+    ],
+  },
+  {
+    id: 'electronic',
+    label: 'Electronic',
+    color: '#7c3aed',
+    samples: [
+      'techno_basic',
+      'techno_industrial',
+      'techno_minimal',
+      'house_classic',
+      'glitch_beat',
+      'drum_bass',
+      'trap_808',
+      'footwork_juke',
+    ],
+  },
+  {
+    id: 'nusantara',
+    label: 'Nusantara',
+    color: '#f59e0b',
+    samples: [
+      'nusantara_batak',
+      'nusantara_jawa',
+      'nusantara_melayu',
+      'nusantara_bedug',
+      'nusantara_sunda',
+      'nusantara_betawi',
+      'nusantara_aceh',
+      'nusantara_tagading_fusion',
+    ],
+  },
+];
+
+export function loadKitPreset(presetId) {
+  const preset = KIT_PRESETS.find(p => p.id === presetId);
+  if (!preset) return;
+  const arr = [...preset.samples];
+  _persist(arr);
+  sensorSamples.set(arr);
+}
 
 // ── Uploaded samples ─────────────────────────────────────────────
 export const uploadedSamples = writable([]);
