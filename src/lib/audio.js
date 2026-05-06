@@ -23,7 +23,7 @@ function _getKillGain(sensorKey) {
   if (!_sensorKillGains.has(sensorKey)) {
     const ac = getCtx();
     const g = ac.createGain();
-    g.connect(ac.destination);
+    g.connect(getMasterOut(ac));
     _sensorKillGains.set(sensorKey, g);
   }
   return _sensorKillGains.get(sensorKey);
@@ -64,7 +64,7 @@ export function startWavLoop(audioBuffer, sensorKey, rate = 1.0) {
   const gain = ac.createGain();
   gain.gain.value = 1.0;
   src.connect(gain);
-  gain.connect(ac.destination);
+  gain.connect(getMasterOut(ac));
   src.start();
   _loopingWavs.set(sensorKey, { src, gain });
   return src;
@@ -96,16 +96,22 @@ function _getPreviewGain() {
   if (!_previewGain) {
     _previewGain = ac.createGain();
     _previewGain.gain.value = 0;
-    _previewGain.connect(ac.destination);
+    _previewGain.connect(getMasterOut(ac));
   }
   return _previewGain;
 }
 
 export function stopPreviewBuffer() {
-  if (_previewGain) _previewGain.gain.value = 0;
+  if (_previewGain) {
+    const ac = getCtx();
+    _previewGain.gain.cancelScheduledValues(ac.currentTime);
+    _previewGain.gain.setValueAtTime(_previewGain.gain.value, ac.currentTime);
+    _previewGain.gain.linearRampToValueAtTime(0, ac.currentTime + 0.02);
+  }
   if (_previewSrc) {
-    try { _previewSrc.stop(); } catch {}
+    const src = _previewSrc;
     _previewSrc = null;
+    setTimeout(() => { try { src.stop(); } catch {} }, 25);
   }
 }
 
@@ -152,6 +158,34 @@ function getCachedNoise(ac, size) {
   return buf;
 }
 
+// Cached decay-shaped noise buffers (untuk skin/kulit perkusi)
+const _decayNoiseCacheMap = new Map();
+function getCachedDecayNoise(ac, secs, decayK) {
+  const key = `${Math.round(secs * 10000)}_${decayK}`;
+  if (_decayNoiseCacheMap.has(key)) return _decayNoiseCacheMap.get(key);
+  const size = Math.floor(ac.sampleRate * secs);
+  const buf  = ac.createBuffer(1, size, ac.sampleRate);
+  const d    = buf.getChannelData(0);
+  for (let i = 0; i < size; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (size * decayK));
+  _decayNoiseCacheMap.set(key, buf);
+  return buf;
+}
+
+// Shared master output compressor — cegah clipping & stabilkan audio
+let _masterOut = null;
+function getMasterOut(ac) {
+  if (_masterOut) return _masterOut;
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -6;
+  comp.knee.value      = 8;
+  comp.ratio.value     = 8;
+  comp.attack.value    = 0.001;
+  comp.release.value   = 0.1;
+  comp.connect(ac.destination);
+  _masterOut = comp;
+  return comp;
+}
+
 // Pastikan AudioContext dalam state 'running' — await ini sebelum schedule
 export async function ensureRunning() {
   const ac = getCtx();
@@ -168,6 +202,7 @@ export function isRunning() {
 const SYNTH_NOTES = [0, 130.81, 164.81, 196.00, 246.94]; // C3 E3 G3 B3
 
 let _synth = null;   // node aktif synth
+let _synthReverbBuf = null;
 
 export async function startSynth(ledLevel = 1, velocity = 0.8) {
   const ac  = await ensureRunning();
@@ -178,7 +213,8 @@ export async function startSynth(ledLevel = 1, velocity = 0.8) {
   if (_synth) { _stopSynthNodes(0); }
 
   // Reverb buffer (simple convolution reverb)
-  const reverbBuf = _makeReverbBuf(ac, 1.5);
+  if (!_synthReverbBuf) _synthReverbBuf = _makeReverbBuf(ac, 1.5);
+  const reverbBuf = _synthReverbBuf;
   const reverb    = ac.createConvolver();
   reverb.buffer   = reverbBuf;
 
@@ -189,8 +225,8 @@ export async function startSynth(ledLevel = 1, velocity = 0.8) {
   const master = ac.createGain();
   master.gain.setValueAtTime(0, ac.currentTime);
   master.gain.linearRampToValueAtTime(vel * 0.5, ac.currentTime + 0.08);
-  master.connect(ac.destination);
-  reverb.connect(reverbGain); reverbGain.connect(ac.destination);
+  master.connect(getMasterOut(ac));
+  reverb.connect(reverbGain); reverbGain.connect(getMasterOut(ac));
 
   // LP filter dengan resonance
   const filter = ac.createBiquadFilter();
@@ -452,7 +488,7 @@ export function scheduleKick(time, velocity = 1.0, rate = 1.0) {
   const master = ac.createGain();
   master.gain.setValueAtTime(vel * 0.9, time);
   master.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
-  master.connect(ac.destination);
+  master.connect(getMasterOut(ac));
 
   // Sub bass pitch sweep
   const osc = ac.createOscillator();
@@ -490,15 +526,11 @@ export function scheduleSnare(time, velocity = 1.0, rate = 1.0) {
   const master = ac.createGain();
   master.gain.setValueAtTime(vel * 0.7, time);
   master.gain.exponentialRampToValueAtTime(0.001, time + 0.22);
-  master.connect(ac.destination);
+  master.connect(getMasterOut(ac));
 
   // Noise burst
-  const size = Math.floor(ac.sampleRate * 0.25);
-  const buf  = ac.createBuffer(1, size, ac.sampleRate);
-  const d    = buf.getChannelData(0);
-  for (let i = 0; i < size; i++) d[i] = Math.random() * 2 - 1;
   const noise = ac.createBufferSource();
-  noise.buffer = buf;
+  noise.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.25));
 
   const bp = ac.createBiquadFilter();
   bp.type = 'bandpass'; bp.frequency.value = 3200; bp.Q.value = 0.7;
@@ -527,12 +559,8 @@ export function scheduleHihat(time, velocity = 0.5, open = false, rate = 1.0) {
   const vel = Math.max(0.05, Math.min(1.0, velocity));
   const dur = open ? 0.3 : 0.06;
 
-  const size = Math.floor(ac.sampleRate * 0.35);
-  const buf  = ac.createBuffer(1, size, ac.sampleRate);
-  const d    = buf.getChannelData(0);
-  for (let i = 0; i < size; i++) d[i] = Math.random() * 2 - 1;
   const noise = ac.createBufferSource();
-  noise.buffer = buf;
+  noise.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.35));
 
   const hp = ac.createBiquadFilter();
   hp.type = 'highpass'; hp.frequency.value = 7000;
@@ -542,7 +570,7 @@ export function scheduleHihat(time, velocity = 0.5, open = false, rate = 1.0) {
   const master = ac.createGain();
   master.gain.setValueAtTime(vel * 0.4, time);
   master.gain.exponentialRampToValueAtTime(0.001, time + dur);
-  master.connect(ac.destination);
+  master.connect(getMasterOut(ac));
 
   noise.connect(hp); hp.connect(bp); bp.connect(master);
   noise.start(time); noise.stop(time + dur + 0.05);
@@ -569,7 +597,7 @@ export function scheduleClap(time, velocity = 0.8) {
     const g = ac.createGain();
     g.gain.setValueAtTime(vel * (i === 2 ? 0.6 : 0.35), t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
-    g.connect(ac.destination);
+    g.connect(getMasterOut(ac));
 
     noise.connect(bp); bp.connect(hp); hp.connect(g);
     noise.start(t); noise.stop(t + 0.08);
@@ -590,7 +618,7 @@ export function scheduleRim(time, velocity = 0.7, rate = 1.0) {
   const g = ac.createGain();
   g.gain.setValueAtTime(vel * 0.5, time);
   g.gain.exponentialRampToValueAtTime(0.001, time + 0.06);
-  g.connect(ac.destination);
+  g.connect(getMasterOut(ac));
 
   const bp = ac.createBiquadFilter();
   bp.type = 'bandpass'; bp.frequency.value = 1000; bp.Q.value = 1.5;
@@ -617,7 +645,7 @@ function getSynthChain(ac) {
   comp.ratio.value     = 5;
   comp.attack.value    = 0.003;
   comp.release.value   = 0.12;
-  comp.connect(ac.destination);
+  comp.connect(getMasterOut(ac));
 
   // Shared convolution reverb
   const reverbBuf = _makeReverbBuf(ac, 1.2);
@@ -706,7 +734,7 @@ export function scheduleTaganing(time, velocity = 1.0, rate = 1.0) {
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
   const master = ac.createGain();
-  master.connect(ac.destination);
+  master.connect(getMasterOut(ac));
 
   // ── Layer 1: "Tok" kayu — transient utama ──
   // Osilator bersegi pendek dengan sweep cepat (kesan mallet kayu)
@@ -742,12 +770,8 @@ export function scheduleTaganing(time, velocity = 1.0, rate = 1.0) {
   body2.connect(body2G); body2G.connect(master);
 
   // ── Layer 3: Kulit tipis — sedikit noise kulit ──
-  const skinSize = Math.floor(ac.sampleRate * 0.06);
-  const skinBuf  = ac.createBuffer(1, skinSize, ac.sampleRate);
-  const skinD    = skinBuf.getChannelData(0);
-  for (let i = 0; i < skinSize; i++) skinD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (skinSize * 0.25));
   const skin = ac.createBufferSource();
-  skin.buffer = skinBuf;
+  skin.buffer = getCachedDecayNoise(ac, 0.06, 0.25);
   const skinBp = ac.createBiquadFilter();
   skinBp.type = 'bandpass'; skinBp.frequency.value = 900; skinBp.Q.value = 1.2;
   const skinG = ac.createGain();
@@ -773,7 +797,7 @@ export function scheduleOdap(time, velocity = 1.0, rate = 1.0) {
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
   const master = ac.createGain();
-  master.connect(ac.destination);
+  master.connect(getMasterOut(ac));
 
   // Tok kayu lebih kecil
   const tok = ac.createOscillator();
@@ -820,7 +844,7 @@ export function scheduleHesek(time, velocity = 0.6, rate = 1.0) {
     const g   = ac.createGain();
     g.gain.setValueAtTime(vel * amps[i], time);
     g.gain.exponentialRampToValueAtTime(0.001, time + decays[i]);
-    g.connect(ac.destination);
+    g.connect(getMasterOut(ac));
     osc.connect(g);
     osc.start(time); osc.stop(time + decays[i] + 0.01);
     hesekNodes.push(osc, g);
@@ -834,7 +858,7 @@ export function scheduleHesek(time, velocity = 0.6, rate = 1.0) {
   const ng  = ac.createGain();
   ng.gain.setValueAtTime(vel * 0.3, time);
   ng.gain.exponentialRampToValueAtTime(0.001, time + 0.018);
-  ng.connect(ac.destination);
+  ng.connect(getMasterOut(ac));
   noise.connect(nhp); nhp.connect(ng);
   noise.start(time); noise.stop(time + 0.015);
   hesekNodes.push(noise, nhp, ng);
@@ -847,7 +871,7 @@ export function scheduleGordang(time, velocity = 1.0, rate = 1.0) {
   const vel = Math.max(0.1, Math.min(1.0, velocity));
 
   const master = ac.createGain();
-  master.connect(ac.destination);
+  master.connect(getMasterOut(ac));
 
   // Sub boom utama — sangat dalam
   const sub = ac.createOscillator();
@@ -874,12 +898,8 @@ export function scheduleGordang(time, velocity = 1.0, rate = 1.0) {
   punch.connect(punchG); punchG.connect(master);
 
   // Kulit — noise rendah singkat
-  const skinSz = Math.floor(ac.sampleRate * 0.08);
-  const skinBuf = ac.createBuffer(1, skinSz, ac.sampleRate);
-  const skinD   = skinBuf.getChannelData(0);
-  for (let i = 0; i < skinSz; i++) skinD[i] = (Math.random() * 2 - 1) * Math.exp(-i / (skinSz * 0.3));
   const skin = ac.createBufferSource();
-  skin.buffer = skinBuf;
+  skin.buffer = getCachedDecayNoise(ac, 0.08, 0.3);
   const skinLp = ac.createBiquadFilter();
   skinLp.type  = 'lowpass'; skinLp.frequency.value = 400;
   const skinG  = ac.createGain();
@@ -923,7 +943,7 @@ export function scheduleHasapi(freq, time, velocity = 0.8) {
   bodyEQ.gain.value    = 7;   // tambah warmth kayu
 
   master.connect(bodyEQ);
-  bodyEQ.connect(ac.destination);
+  bodyEQ.connect(getMasterOut(ac));
 
   // Reverb kecil — bilik akustik kecil (kotak kayu resonat)
   const { reverb } = getSynthChain(ac);
@@ -985,12 +1005,8 @@ export function scheduleHasapi(freq, time, velocity = 0.8) {
   osc2.connect(lpf2); lpf2.connect(env2); env2.connect(master);
 
   // ── Pluck transient: kuku/pick mengenai dawai (5ms) ──
-  const nSz  = Math.floor(ac.sampleRate * 0.005);
-  const nBuf = ac.createBuffer(1, nSz, ac.sampleRate);
-  const nD   = nBuf.getChannelData(0);
-  for (let i = 0; i < nSz; i++) nD[i] = (Math.random() * 2 - 1) * (1 - i / nSz);
-  const pluck  = ac.createBufferSource();
-  pluck.buffer = nBuf;
+  const pluck = ac.createBufferSource();
+  pluck.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.005));
   const plBp   = ac.createBiquadFilter();
   plBp.type    = 'bandpass';
   plBp.frequency.value = Math.min(freq * 5, 8000);  // cap di 8kHz
@@ -1039,7 +1055,7 @@ function makeDistCurve(amount) {
 // ── Tom (Floor Tom) ───────────────────────────────────────────
 export function scheduleTom(time, velocity = 1.0, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
-  const master = ac.createGain(); master.connect(ac.destination);
+  const master = ac.createGain(); master.connect(getMasterOut(ac));
   const osc = ac.createOscillator(); osc.type = 'sine';
   osc.frequency.setValueAtTime(fr(180, rate), time);
   osc.frequency.exponentialRampToValueAtTime(fr(75, rate), time + 0.25);
@@ -1068,7 +1084,7 @@ export function scheduleCymbal(time, velocity = 0.7, rate = 1.0) {
   const master = ac.createGain();
   master.gain.setValueAtTime(vel * 0.5, time);
   master.gain.exponentialRampToValueAtTime(0.001, time + 1.6);
-  master.connect(ac.destination);
+  master.connect(getMasterOut(ac));
   const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 5000;
   const nodes = [master, hp];
   for (const f of freqs) {
@@ -1092,7 +1108,7 @@ export function scheduleCymbal(time, velocity = 0.7, rate = 1.0) {
 // ── Tambourine ─────────────────────────────────────────────────
 export function scheduleTambourine(time, velocity = 0.6, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.05, Math.min(1.0, velocity));
-  const master = ac.createGain(); master.connect(ac.destination);
+  const master = ac.createGain(); master.connect(getMasterOut(ac));
   const nodes = [master];
   // Jingle metalik: beberapa osc tinggi + noise pendek
   for (let i = 0; i < 4; i++) {
@@ -1121,7 +1137,7 @@ export function scheduleTambourine(time, velocity = 0.6, rate = 1.0) {
 // ── Cowbell ────────────────────────────────────────────────────
 export function scheduleCowbell(time, velocity = 0.7, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
-  const master = ac.createGain(); master.connect(ac.destination);
+  const master = ac.createGain(); master.connect(getMasterOut(ac));
   const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 800; bp.Q.value = 1.2;
   const env = ac.createGain();
   env.gain.setValueAtTime(vel * 0.7, time);
@@ -1139,7 +1155,7 @@ export function scheduleCowbell(time, velocity = 0.7, rate = 1.0) {
 // Dua karakter: "tak" (kering, tinggi) + "dung" (dalam, panjang)
 export function scheduleKendang(time, velocity = 1.0, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
-  const master = ac.createGain(); master.connect(ac.destination);
+  const master = ac.createGain(); master.connect(getMasterOut(ac));
   // Dung — badan rendah
   const dung = ac.createOscillator(); dung.type = 'sine';
   dung.frequency.setValueAtTime(fr(140, rate), time);
@@ -1175,7 +1191,7 @@ export function scheduleKendang(time, velocity = 1.0, rate = 1.0) {
 // Frame drum dengan kepingan logam, bunyi "tak" kering + jingle
 export function scheduleRebana(time, velocity = 0.9, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
-  const master = ac.createGain(); master.connect(ac.destination);
+  const master = ac.createGain(); master.connect(getMasterOut(ac));
   // Badan drum
   const body = ac.createOscillator(); body.type = 'sine';
   body.frequency.setValueAtTime(fr(220, rate), time);
@@ -1247,7 +1263,7 @@ export function scheduleBedug(time, velocity = 1.0, rate = 1.0) {
 // ── Conga (Latin) ──────────────────────────────────────────────
 export function scheduleConga(time, velocity = 0.9, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
-  const master = ac.createGain(); master.connect(ac.destination);
+  const master = ac.createGain(); master.connect(getMasterOut(ac));
   const osc = ac.createOscillator(); osc.type = 'sine';
   osc.frequency.setValueAtTime(fr(320, rate), time);
   osc.frequency.exponentialRampToValueAtTime(fr(180, rate), time + 0.18);
@@ -1273,7 +1289,7 @@ export function scheduleConga(time, velocity = 0.9, rate = 1.0) {
 // ── Bongo (Latin) ──────────────────────────────────────────────
 export function scheduleBongo(time, velocity = 0.8, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
-  const master = ac.createGain(); master.connect(ac.destination);
+  const master = ac.createGain(); master.connect(getMasterOut(ac));
   // High bongo
   const hi = ac.createOscillator(); hi.type = 'sine';
   hi.frequency.setValueAtTime(fr(480, rate), time);
@@ -1327,7 +1343,7 @@ export function scheduleKick808(time, velocity = 1.0, rate = 1.0) {
 // ── Electronic Snare (808 Snare) ───────────────────────────────
 export function scheduleElecSnare(time, velocity = 1.0, rate = 1.0) {
   const ac = getCtx(), vel = Math.max(0.1, Math.min(1.0, velocity));
-  const master = ac.createGain(); master.connect(ac.destination);
+  const master = ac.createGain(); master.connect(getMasterOut(ac));
   // Noise burst elektronik
   const noise = ac.createBufferSource();
   noise.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.3));
@@ -1358,7 +1374,7 @@ export function scheduleSitar(freq, time, velocity = 0.8) {
   const master = ac.createGain();
   const bodyEQ = ac.createBiquadFilter();
   bodyEQ.type = 'peaking'; bodyEQ.frequency.value = 480; bodyEQ.Q.value = 2.2; bodyEQ.gain.value = 6;
-  master.connect(bodyEQ); bodyEQ.connect(ac.destination);
+  master.connect(bodyEQ); bodyEQ.connect(getMasterOut(ac));
 
   const { reverb } = getSynthChain(ac);
   const rvG = ac.createGain(); rvG.gain.value = 0.22;
@@ -1408,11 +1424,8 @@ export function scheduleSitar(freq, time, velocity = 0.8) {
   }
 
   // Petikan transient
-  const nSz = Math.floor(ac.sampleRate * 0.004);
-  const nBuf = ac.createBuffer(1, nSz, ac.sampleRate);
-  const nD = nBuf.getChannelData(0);
-  for (let i = 0; i < nSz; i++) nD[i] = (Math.random() * 2 - 1) * (1 - i / nSz);
-  const pluck = ac.createBufferSource(); pluck.buffer = nBuf;
+  const pluck = ac.createBufferSource();
+  pluck.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.004));
   const plBp = ac.createBiquadFilter(); plBp.type = 'bandpass'; plBp.frequency.value = Math.min(freq * 6, 10000); plBp.Q.value = 1.4;
   const plG = ac.createGain(); plG.gain.setValueAtTime(0.4, time); plG.gain.exponentialRampToValueAtTime(0.001, time + 0.006);
   pluck.connect(plBp); plBp.connect(plG); plG.connect(master);
@@ -1454,11 +1467,8 @@ export function scheduleBiola(freq, time, velocity = 0.7, duration = 0.5) {
   lfo.connect(lfoG); lfoG.connect(osc.frequency);
 
   // Noise gesek (bow noise)
-  const nSz = Math.floor(ac.sampleRate * 0.04);
-  const nBuf = ac.createBuffer(1, nSz, ac.sampleRate);
-  const nD = nBuf.getChannelData(0);
-  for (let i = 0; i < nSz; i++) nD[i] = Math.random() * 2 - 1;
-  const noise = ac.createBufferSource(); noise.buffer = nBuf;
+  const noise = ac.createBufferSource();
+  noise.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.04));
   const nbp = ac.createBiquadFilter(); nbp.type = 'bandpass'; nbp.frequency.value = freq * 2; nbp.Q.value = 2.0;
   const ng = ac.createGain();
   ng.gain.setValueAtTime(vel * 0.15, time); ng.gain.linearRampToValueAtTime(0, time + 0.04);
@@ -1506,11 +1516,8 @@ export function scheduleSuling(freq, time, velocity = 0.7, duration = 0.45) {
   osc.connect(lp); lp.connect(master);
 
   // Bunyi nafas (breathy air characteristic of bamboo)
-  const nSz = Math.floor(ac.sampleRate * 0.18);
-  const nBuf = ac.createBuffer(1, nSz, ac.sampleRate);
-  const nD = nBuf.getChannelData(0);
-  for (let i = 0; i < nSz; i++) nD[i] = Math.random() * 2 - 1;
-  const noise = ac.createBufferSource(); noise.buffer = nBuf;
+  const noise = ac.createBufferSource();
+  noise.buffer = getCachedNoise(ac, Math.floor(ac.sampleRate * 0.18));
   const nhp = ac.createBiquadFilter(); nhp.type = 'bandpass'; nhp.frequency.value = freq * 3; nhp.Q.value = 1.5;
   const ng = ac.createGain();
   ng.gain.setValueAtTime(0, time); ng.gain.linearRampToValueAtTime(vel * 0.10, time + 0.05);
@@ -1728,7 +1735,7 @@ export function scheduleWav(url, time, velocity = 1.0, rate = 1.0) {
     src.playbackRate.value = Math.max(0.25, Math.min(4.0, rate || 1.0));
     const gain = ac.createGain();
     gain.gain.value = vel * 0.85;
-    src.connect(gain); gain.connect(ac.destination);
+    src.connect(gain); gain.connect(getMasterOut(ac));
     src.start(time);
     const dur = buf.duration;
     src.stop(time + dur);
@@ -1768,7 +1775,7 @@ export function scheduleWavBuffer(audioBuffer, time, velocity = 1.0, rate = 1.0,
     set.add(entry);
     src.onended = () => set.delete(entry);
   } else {
-    gain.connect(ac.destination);
+    gain.connect(getMasterOut(ac));
   }
 
   src.start(time);
