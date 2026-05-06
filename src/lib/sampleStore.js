@@ -25,6 +25,8 @@ import {
   scheduleConga, scheduleBongo,
   scheduleKick808, scheduleElecSnare,
   scheduleSynth, scheduleHasapi,
+  scheduleSitar, scheduleBiola, scheduleSuling, scheduleTrumpet,
+  scheduleSynthPad, scheduleSynthLead, scheduleSynthBass,
   scheduleWav, scheduleWavBuffer, decodeAudioFile, decodeAudioBuffer,
   startPreviewBuffer, stopPreviewBuffer, previewWavUrl,
 } from './audio.js';
@@ -421,6 +423,138 @@ export const BEAT_DATA = {
     odap:   [0,   0,    0.5,  0,    0,    0,    0,    0,    0,   0.5,  0,    0,    0,   0,    0,    0   ],
   }},
 
+  // ── EUCLIDEAN RHYTHM ─────────────────────────────────────────
+  // Setiap pattern menggunakan nisbah Euclidean E(k,n) — agihan beat sepaling rata
+  // Formula: posisi beat ke-i = floor(n * i / k), dirotasi ke step pertama = 1
+
+  // E(4,16) kick + E(2,16) snare + E(8,16) hihat — groove universal semua genre
+  euclid_groove: { bpm: 120, tracks: {
+    kick:  [1,    0,    0,    0,    1,    0,    0,    0,    1,    0,    0,    0,    1,    0,    0,    0   ],
+    snare: [0,    0,    0,    0,    1,    0,    0,    0,    0,    0,    0,    0,    1,    0,    0,    0   ],
+    hihat: [0.75, 0,    0.75, 0,    0.75, 0,    0.75, 0,    0.75, 0,    0.75, 0,    0.75, 0,    1,    0   ],
+    rim:   [0.5,  0,    0,    0,    0,    0.5,  0,    0,    0,    0,    0.5,  0,    0,    0,    0,    0   ],
+  }},
+  // E(3,8)×2 kick (tresillo) + E(5,8)×2 conga (cinquillo) — Latin/Afro/World
+  euclid_tresillo: { bpm: 110, tracks: {
+    kick:  [1,    0,    0,    0.75, 0,    0,    1,    0,    1,    0,    0,    0.75, 0,    0,    1,    0   ],
+    conga: [1,    0,    0.75, 0.75, 0,    0.75, 0.75, 0,    1,    0,    0.75, 0.75, 0,    0.75, 0.75, 0   ],
+    hihat: [0.5,  0,    0,    0,    0.5,  0,    0,    0,    0.5,  0,    0,    0,    0.5,  0,    0,    0   ],
+    bongo: [0,    0,    0.5,  0,    0,    0,    0,    0.5,  0,    0,    0,    0,    0.5,  0,    0,    0   ],
+  }},
+  // E(7,16) kick — septuplet yang serasi Jazz/Funk/Odd-meter
+  euclid_7beat: { bpm: 105, tracks: {
+    kick:  [1,    0,    0.75, 0,    1,    0,    0.75, 0,    0,    1,    0,    0.75, 0,    1,    0,    0   ],
+    snare: [0,    0,    0,    0,    0.75, 0,    0,    0,    0.5,  0,    0,    0,    1,    0,    0,    0   ],
+    hihat: [0.75, 0,    0,    0.75, 0,    0,    0.75, 0,    0,    0.75, 0,    0,    0.75, 0,    0,    0   ],
+    rim:   [0,    0,    0,    0,    0.5,  0,    0,    0,    0,    0,    0,    0,    0.5,  0,    0,    0   ],
+  }},
+  // E(13,16) hihat + E(4,16) kick — dense electronic/techno
+  euclid_dense: { bpm: 130, tracks: {
+    kick808: [1,    0,    0,    0,    1,    0,    0,    0,    1,    0,    0,    0,    1,    0,    0,    0   ],
+    esnare:  [0,    0,    0,    0,    1,    0,    0,    0,    0,    0,    0,    0,    1,    0,    0,    0   ],
+    hihat:   [1,    0.75, 0.75, 0.75, 0.75, 0,    0.75, 0.75, 0.75, 0.75, 0,    0.75, 0.75, 0.75, 0.75, 0   ],
+    rim:     [0,    0,    0.5,  0,    0,    0.5,  0,    0,    0.5,  0,    0,    0.5,  0,    0,    0.5,  0   ],
+  }},
+  // E(3,16) kick + E(5,16) hihat — sparse/ambient, tempo perlahan
+  euclid_sparse: { bpm: 70, tracks: {
+    kick:   [1,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0   ],
+    cymbal: [0,    0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0,    0,    0   ],
+    hihat:  [0.5,  0,    0,    0.5,  0,    0,    0.5,  0,    0,    0.5,  0,    0,    0.5,  0,    0,    0   ],
+    rim:    [0,    0,    0.25, 0,    0,    0,    0,    0,    0,    0,    0,    0.25, 0,    0,    0,    0   ],
+  }},
+  // E(5,16) conga + E(7,16) bongo — poliritma 5:7 lintas genre
+  euclid_poly: { bpm: 100, tracks: {
+    conga:      [1,    0,    0,    1,    0,    0,    1,    0,    0,    1,    0,    0,    1,    0,    0,    0   ],
+    bongo:      [0.75, 0,    0.75, 0,    1,    0,    0.75, 0,    0,    0.75, 0,    1,    0,    0.75, 0,    0   ],
+    hihat:      [0.5,  0,    0,    0,    0.5,  0,    0,    0,    0.5,  0,    0,    0,    0.5,  0,    0,    0   ],
+    tambourine: [0.75, 0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0   ],
+  }},
+  // E(5,8)×2 kendang + E(11,16) hesek — pendekatan Euclidean untuk Nusantara
+  euclid_nusantara: { bpm: 112, tracks: {
+    kendang: [1,    0.25, 0,    1,    0.75, 0,    1,    0,    1,    0.25, 0,    1,    0.75, 0,    1,    0   ],
+    gordang: [1,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0   ],
+    hesek:   [0.75, 0.75, 0.75, 0,    0.75, 0.75, 0,    0.75, 0.75, 0,    0.75, 0.75, 0,    0.75, 0.75, 0   ],
+    rebana:  [0,    0,    0.75, 0,    0,    0.75, 0,    0,    0.75, 0,    0,    0.75, 0,    0,    0.75, 0   ],
+  }},
+  // E(5,16) kick + E(6,16) hihat — Hip-Hop groove Euclidean
+  euclid_hiphop: { bpm: 90, tracks: {
+    kick:  [1,    0,    0,    0.75, 0,    0,    0.75, 0,    0,    0.75, 0,    0,    1,    0,    0,    0   ],
+    snare: [0,    0,    0.25, 0,    1,    0,    0,    0,    0,    0.25, 0,    0,    1,    0,    0.25, 0   ],
+    hihat: [0.75, 0,    0.75, 0,    0,    0.75, 0,    0,    0.75, 0,    0.75, 0,    0,    0.75, 0,    0   ],
+    rim:   [0,    0.25, 0,    0,    0,    0.25, 0,    0,    0,    0.25, 0,    0,    0,    0,    0.25, 0   ],
+  }},
+
+  // ── GESEK (Alat Musik Dawai / String) ────────────────────────
+  // Sitar: pentatonik D (D4-E4-G4-A4-D5) — gaya raga India
+  gesek_sitar_raga: { bpm: 80, tracks: {
+    sit_d4: [1,   0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0,    0,    0   ],
+    sit_e4: [0,   0,    0,    0,    0.75, 0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0   ],
+    sit_g4: [0,   0,    0.75, 0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0   ],
+    sit_a4: [0,   0,    0,    0,    0,    0,    1,    0,    0,    0,    0,    0,    0,    0,    1,    0   ],
+    sit_d5: [0,   0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0.75],
+  }},
+  // Sitar Ambient — jarang, meditatif, perlahan
+  gesek_sitar_ambient: { bpm: 65, tracks: {
+    sit_d4: [1,   0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0   ],
+    sit_g4: [0,   0,    0,    0,    0,    0,    0,    0,    1,    0,    0,    0,    0,    0,    0,    0   ],
+    sit_a4: [0,   0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0,    0.75, 0,    0,    0   ],
+    sit_b4: [0,   0,    0,    0,    0,    0,    0,    0,    0,    0,    0.5,  0,    0,    0,    0,    0   ],
+  }},
+  // Biola: corak melodik waltz dalam 4/4
+  gesek_biola_waltz: { bpm: 116, tracks: {
+    bio_c4: [1,   0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0,    0,    0   ],
+    bio_e4: [0,   0,    0,    0,    0.75, 0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0   ],
+    bio_g4: [0,   0,    0.75, 0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0   ],
+    bio_a4: [0,   0,    0,    0,    0,    0,    1,    0,    0,    0,    0,    0,    0,    0,    1,    0   ],
+  }},
+
+  // ── TIUP (Alat Musik Angin / Wind) ───────────────────────────
+  // Suling Nusantara: melodi pentatonik folk, tempo sederhana
+  tiup_suling_folk: { bpm: 100, tracks: {
+    sul_d4: [1,   0,    0,    0,    0,    0,    1,    0,    0,    0,    0,    0,    1,    0,    0,    0   ],
+    sul_g4: [0,   0,    0,    0,    1,    0,    0,    0,    0.75, 0,    0,    0,    0,    0,    0.75, 0   ],
+    sul_a4: [0,   0,    0.75, 0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0   ],
+    sul_e4: [0,   0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0,    0,    0.75],
+  }},
+  // Suling Bambu: perlahan, bernafas, meditatif
+  tiup_suling_bamboo: { bpm: 72, tracks: {
+    sul_c4: [1,   0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0   ],
+    sul_g4: [0,   0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0,    0,    0   ],
+    sul_a4: [0,   0,    0,    0,    0.5,  0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0   ],
+    sul_e4: [0,   0,    0,    0,    0,    0,    0.5,  0,    0,    0,    0,    0,    0,    0,    0.5,  0   ],
+  }},
+  // Terompet Jazz: melodi brass, feel 2-5-1
+  tiup_trumpet_jazz: { bpm: 125, tracks: {
+    tpt_g3: [1,   0,    0,    0,    0,    0,    0,    0,    1,    0,    0,    0,    0,    0,    0,    0   ],
+    tpt_c4: [0,   0,    0,    0,    0.75, 0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0   ],
+    tpt_e4: [0,   0,    0.75, 0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0   ],
+    tpt_g4: [0,   0,    0,    0,    0,    0,    1,    0,    0,    0,    0,    0,    0,    0,    0,    1   ],
+  }},
+
+  // ── SYNTH MELODIK ─────────────────────────────────────────────
+  // Synth Pad Ambient: akord lambat, evolusi perlahan
+  synth_pad_ambient: { bpm: 68, tracks: {
+    pad_c3: [1,   0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0   ],
+    pad_e3: [0,   0,    0,    0,    1,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0   ],
+    pad_g3: [0,   0,    0,    0,    0,    0,    0,    0,    1,    0,    0,    0,    0,    0,    0,    0   ],
+    pad_a3: [0,   0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0   ],
+  }},
+  // Synth Lead Arpeggio: naik tangga pentatonik
+  synth_lead_arp: { bpm: 128, tracks: {
+    lead_c4: [1,   0,    0,    0,    1,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0   ],
+    lead_e4: [0,   0,    1,    0,    0,    0,    0,    0,    1,    0,    0,    0,    0,    0,    0,    0   ],
+    lead_g4: [0,   0,    0,    0,    0,    0,    1,    0,    0,    0,    1,    0,    0,    0,    0,    0   ],
+    lead_a4: [0,   0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    1,    0,    1,    0   ],
+    lead_c5: [0,   0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0.75],
+  }},
+  // Synth Bass Funk: groove bass elektronik dalam
+  synth_bass_funk: { bpm: 108, tracks: {
+    bass_c2: [1,   0,    0,    0,    1,    0,    0.75, 0,    0,    0,    0,    0,    0.75, 0,    0,    0   ],
+    bass_g2: [0,   0,    0,    0,    0,    0,    0,    0,    1,    0,    0,    0,    0,    0,    1,    0   ],
+    bass_a2: [0,   0,    0.75, 0,    0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0   ],
+    bass_c3: [0,   0,    0,    0,    0,    0,    0,    0.75, 0,    0,    0,    0,    0,    0,    0,    0   ],
+  }},
+
 };
 
 // ── Metadata UI untuk 30 pola beat ──────────────────────────────
@@ -490,6 +624,27 @@ export const SAMPLES = [
   { id: 'nusantara_papua',        label: 'Tifa Papua',          group: 'Nusantara',   icon: '🪘', color: '#4338ca' },
   // Ambient
   { id: 'ambient_ritual',         label: 'Ambient Ritual',      group: 'Ambient',     icon: '🌙', color: '#475569' },
+  // Gesek (alat musik dawai)
+  { id: 'gesek_sitar_raga',       label: 'Sitar Raga',          group: 'Gesek',       icon: '🪕', color: '#d97706' },
+  { id: 'gesek_sitar_ambient',    label: 'Sitar Ambient',       group: 'Gesek',       icon: '🪕', color: '#b45309' },
+  { id: 'gesek_biola_waltz',      label: 'Biola Waltz',         group: 'Gesek',       icon: '🎻', color: '#92400e' },
+  // Tiup (alat musik angin)
+  { id: 'tiup_suling_folk',       label: 'Suling Folk',         group: 'Tiup',        icon: '🎵', color: '#059669' },
+  { id: 'tiup_suling_bamboo',     label: 'Suling Bambu',        group: 'Tiup',        icon: '🎵', color: '#047857' },
+  { id: 'tiup_trumpet_jazz',      label: 'Terompet Jazz',       group: 'Tiup',        icon: '🎺', color: '#f59e0b' },
+  // Synth melodik
+  { id: 'synth_pad_ambient',      label: 'Synth Pad',           group: 'Synth',       icon: '🎹', color: '#7c3aed' },
+  { id: 'synth_lead_arp',         label: 'Synth Lead Arp',      group: 'Synth',       icon: '🎹', color: '#6d28d9' },
+  { id: 'synth_bass_funk',        label: 'Synth Bass Funk',     group: 'Synth',       icon: '🎹', color: '#5b21b6' },
+  // Euclidean — agihan beat paling rata, serasi semua genre
+  { id: 'euclid_groove',          label: 'E(4,16) Groove',      group: 'Euclidean',   icon: '⬡', color: '#10b981' },
+  { id: 'euclid_tresillo',        label: 'E Tresillo',          group: 'Euclidean',   icon: '⬡', color: '#34d399' },
+  { id: 'euclid_7beat',           label: 'E(7,16) Swing',       group: 'Euclidean',   icon: '⬡', color: '#6ee7b7' },
+  { id: 'euclid_dense',           label: 'E(13,16) Dense',      group: 'Euclidean',   icon: '⬡', color: '#0ea5e9' },
+  { id: 'euclid_sparse',          label: 'E(3,16) Sparse',      group: 'Euclidean',   icon: '⬡', color: '#94a3b8' },
+  { id: 'euclid_poly',            label: 'E(5×7) Poly',         group: 'Euclidean',   icon: '⬡', color: '#f472b6' },
+  { id: 'euclid_nusantara',       label: 'E Nusantara',         group: 'Euclidean',   icon: '⬡', color: '#fbbf24' },
+  { id: 'euclid_hiphop',          label: 'E Hip-Hop',           group: 'Euclidean',   icon: '⬡', color: '#22d3ee' },
 ];
 
 // ── Fungsi instrument (digunakan oleh beat sequencer) ────────────
@@ -529,6 +684,49 @@ export const SAMPLE_FNS = {
   has_e4:      (t, v, r = 1.0) => scheduleHasapi(329.63 * (r || 1), t, v),
   has_g4:      (t, v, r = 1.0) => scheduleHasapi(392.00 * (r || 1), t, v),
   has_a4:      (t, v, r = 1.0) => scheduleHasapi(440.00 * (r || 1), t, v),
+  // Sitar — pentatonik D + B4 + D5
+  sit_d4:      (t, v, r = 1.0) => scheduleSitar(293.66 * (r || 1), t, v),
+  sit_e4:      (t, v, r = 1.0) => scheduleSitar(329.63 * (r || 1), t, v),
+  sit_g4:      (t, v, r = 1.0) => scheduleSitar(392.00 * (r || 1), t, v),
+  sit_a4:      (t, v, r = 1.0) => scheduleSitar(440.00 * (r || 1), t, v),
+  sit_b4:      (t, v, r = 1.0) => scheduleSitar(493.88 * (r || 1), t, v),
+  sit_d5:      (t, v, r = 1.0) => scheduleSitar(587.33 * (r || 1), t, v),
+  // Biola — pentatonik C
+  bio_c4:      (t, v, r = 1.0) => scheduleBiola(261.63 * (r || 1), t, v),
+  bio_e4:      (t, v, r = 1.0) => scheduleBiola(329.63 * (r || 1), t, v),
+  bio_g4:      (t, v, r = 1.0) => scheduleBiola(392.00 * (r || 1), t, v),
+  bio_a4:      (t, v, r = 1.0) => scheduleBiola(440.00 * (r || 1), t, v),
+  bio_c5:      (t, v, r = 1.0) => scheduleBiola(523.25 * (r || 1), t, v),
+  // Suling — pentatonik C + D
+  sul_c4:      (t, v, r = 1.0) => scheduleSuling(261.63 * (r || 1), t, v),
+  sul_d4:      (t, v, r = 1.0) => scheduleSuling(293.66 * (r || 1), t, v),
+  sul_e4:      (t, v, r = 1.0) => scheduleSuling(329.63 * (r || 1), t, v),
+  sul_g4:      (t, v, r = 1.0) => scheduleSuling(392.00 * (r || 1), t, v),
+  sul_a4:      (t, v, r = 1.0) => scheduleSuling(440.00 * (r || 1), t, v),
+  // Terompet — G3 hingga G4
+  tpt_g3:      (t, v, r = 1.0) => scheduleTrumpet(196.00 * (r || 1), t, v),
+  tpt_c4:      (t, v, r = 1.0) => scheduleTrumpet(261.63 * (r || 1), t, v),
+  tpt_e4:      (t, v, r = 1.0) => scheduleTrumpet(329.63 * (r || 1), t, v),
+  tpt_g4:      (t, v, r = 1.0) => scheduleTrumpet(392.00 * (r || 1), t, v),
+  tpt_a4:      (t, v, r = 1.0) => scheduleTrumpet(440.00 * (r || 1), t, v),
+  // Synth Pad — C3 hingga C4
+  pad_c3:      (t, v, r = 1.0) => scheduleSynthPad(130.81 * (r || 1), t, v),
+  pad_e3:      (t, v, r = 1.0) => scheduleSynthPad(164.81 * (r || 1), t, v),
+  pad_g3:      (t, v, r = 1.0) => scheduleSynthPad(196.00 * (r || 1), t, v),
+  pad_a3:      (t, v, r = 1.0) => scheduleSynthPad(220.00 * (r || 1), t, v),
+  pad_c4:      (t, v, r = 1.0) => scheduleSynthPad(261.63 * (r || 1), t, v),
+  // Synth Lead — C4 hingga C5
+  lead_c4:     (t, v, r = 1.0) => scheduleSynthLead(261.63 * (r || 1), t, v),
+  lead_e4:     (t, v, r = 1.0) => scheduleSynthLead(329.63 * (r || 1), t, v),
+  lead_g4:     (t, v, r = 1.0) => scheduleSynthLead(392.00 * (r || 1), t, v),
+  lead_a4:     (t, v, r = 1.0) => scheduleSynthLead(440.00 * (r || 1), t, v),
+  lead_c5:     (t, v, r = 1.0) => scheduleSynthLead(523.25 * (r || 1), t, v),
+  // Synth Bass — C2 hingga E3
+  bass_c2:     (t, v, r = 1.0) => scheduleSynthBass(65.41  * (r || 1), t, v),
+  bass_g2:     (t, v, r = 1.0) => scheduleSynthBass(98.00  * (r || 1), t, v),
+  bass_a2:     (t, v, r = 1.0) => scheduleSynthBass(110.00 * (r || 1), t, v),
+  bass_c3:     (t, v, r = 1.0) => scheduleSynthBass(130.81 * (r || 1), t, v),
+  bass_e3:     (t, v, r = 1.0) => scheduleSynthBass(164.81 * (r || 1), t, v),
   // WAV
 };
 
@@ -577,6 +775,36 @@ export const KIT_PRESETS = [
       'nusantara_betawi',
       'nusantara_aceh',
       'nusantara_tagading_fusion',
+    ],
+  },
+  {
+    id: 'euclidean',
+    label: 'Euclidean',
+    color: '#10b981',
+    samples: [
+      'euclid_groove',
+      'euclid_tresillo',
+      'euclid_7beat',
+      'euclid_dense',
+      'euclid_sparse',
+      'euclid_poly',
+      'euclid_nusantara',
+      'euclid_hiphop',
+    ],
+  },
+  {
+    id: 'melodik',
+    label: 'Melodik',
+    color: '#d97706',
+    samples: [
+      'gesek_sitar_raga',
+      'gesek_sitar_ambient',
+      'gesek_biola_waltz',
+      'tiup_suling_folk',
+      'tiup_suling_bamboo',
+      'tiup_trumpet_jazz',
+      'synth_pad_ambient',
+      'synth_lead_arp',
     ],
   },
 ];

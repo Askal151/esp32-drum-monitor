@@ -10,6 +10,8 @@
   import SamplePicker      from './lib/SamplePicker.svelte';
   import FirmwareFlasher   from './lib/FirmwareFlasher.svelte';
   import SampleUpload      from './lib/SampleUpload.svelte';
+  import MasterTransport   from './lib/MasterTransport.svelte';
+  import { masterBpm, syncToGrid, leaveGrid } from './lib/transport.js';
   import { unlockAudio, isRunning, getAudioCtx, ensureRunning, stopWavSources, startWavLoop, stopWavLoop, updateWavLoopRate } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount,
@@ -51,9 +53,9 @@
   // Sequencer bermula apabila LED > 0, berhenti apabila LED = 0
   let seqActive = [false, false, false, false, false, false, false, false];
   const _seqTimers    = new Array(8).fill(null);
+  const _seqPending   = new Array(8).fill(false); // guard async start race condition
   const _seqStep      = new Array(8).fill(0);
   const _seqNextTime  = new Array(8).fill(0);
-  const _seqBpm       = new Array(8).fill(120);  // BPM semasa setiap sequencer (untuk detect perubahan)
   const _manualPlaying = new Array(8).fill(false); // dibaca dalam closure setInterval
   let   manualPads     = [..._manualPlaying];      // reactive copy untuk template
   let   manualPlayActive = false;
@@ -66,15 +68,19 @@
   const SEQ_TICK_MS   = 25;
   const SEQ_LOOKAHEAD = 0.1;  // saat lookahead Web Audio
 
-  function _startSensorSeq(idx) {
-    if (_seqTimers[idx]) return;
-    _seqStep[idx] = 0;
-    const ac = getAudioCtx();
-    _seqNextTime[idx] = ac.currentTime + 0.05;
+  async function _startSensorSeq(idx) {
+    if (_seqTimers[idx] || _seqPending[idx]) return;
+    _seqPending[idx] = true;
+
+    // Snap ke bar boundary yang sama dengan semua sequencer lain
+    const { nextNote } = await syncToGrid();
+    _seqStep[idx]     = 0;
+    _seqNextTime[idx] = nextNote;
+    _seqPending[idx]  = false;
 
     // Uploaded WAV: loop terus tanpa step sequencer
-    const beatId0   = get(sensorSamples)[idx];
-    const beat0     = BEAT_DATA[beatId0];
+    const beatId0 = get(sensorSamples)[idx];
+    const beat0   = BEAT_DATA[beatId0];
     if (beat0?.isUpload && beat0?.buffer) {
       const initRate = (_sensorBpm[idx] / 120) * Math.pow(2, (_sensorPitch[idx] || 0) / 12);
       startWavLoop(beat0.buffer, idx, initRate);
@@ -83,26 +89,18 @@
     _seqTimers[idx] = setInterval(() => {
       const ac2 = isRunning() ? getAudioCtx() : null;
       // Henti senyap — JANGAN sentuh seqActive dari sini (elak re-render)
-      if (!ac2) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
+      if (!ac2) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; leaveGrid(); return; }
 
       const beatId = get(sensorSamples)[idx];
-      if (!beatId) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
+      if (!beatId) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; leaveGrid(); return; }
 
       const s = get(sensors)[idx];
-      if (s.led === 0 && !_manualPlaying[idx]) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
+      if (s.led === 0 && !_manualPlaying[idx]) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; leaveGrid(); return; }
 
       const beat = BEAT_DATA[beatId];
-      if (!beat) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; return; }
+      if (!beat) { clearInterval(_seqTimers[idx]); _seqTimers[idx] = null; _seqStep[idx] = 0; leaveGrid(); return; }
 
-      const activeBpm = _sensorBpm[idx] || beat.bpm;
-
-      // Bila BPM berubah, reset _seqNextTime supaya perubahan tempo berkesan serta-merta
-      if (_seqBpm[idx] !== activeBpm) {
-        _seqBpm[idx] = activeBpm;
-        _seqNextTime[idx] = ac2.currentTime + 0.05;
-      }
-
-      const stepDur = 60 / activeBpm / 4;  // 16th note — BPM dari potensio atau preset
+      const stepDur = 60 / get(masterBpm) / 4;  // guna masterBpm — sama dengan semua sequencer
 
       while (_seqNextTime[idx] < ac2.currentTime + SEQ_LOOKAHEAD) {
         const step = _seqStep[idx];
@@ -133,12 +131,13 @@
   }
 
   function _stopSensorSeq(idx) {
+    if (!_seqTimers[idx]) return;
     clearInterval(_seqTimers[idx]);
     _seqTimers[idx] = null;
     _seqStep[idx]   = 0;
     stopWavLoop(idx);
     stopWavSources(idx);
-    // seqActive dikemas kini oleh sensors.subscribe sahaja
+    leaveGrid();
   }
 
   async function playAll() {
@@ -630,6 +629,7 @@
       <!-- Sequencer — 4 sequencer stacked, always mounted -->
       <div class="absolute inset-0 overflow-y-auto flex flex-col gap-px"
            style="display:{tab==='sequencer' ? 'flex' : 'none'}">
+        <MasterTransport />
         <div style="height:310px; flex:none"><BeatSequencer /></div>
         <div class="border-t border-slate-800" style="height:250px; flex:none"><SynthSequencer /></div>
         <div class="border-t-2 border-amber-900" style="height:290px; flex:none"><TagadingSequencer /></div>

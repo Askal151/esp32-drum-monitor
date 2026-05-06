@@ -5,8 +5,10 @@
 -->
 <script>
   import { onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import { scheduleHasapi, getAudioCtx, ensureRunning } from './audio.js';
   import { sensors } from './serial.js';
+  import { masterBpm, syncToGrid, leaveGrid, masterCommand } from './transport.js';
 
   const STEPS = 16;
 
@@ -59,7 +61,6 @@
   };
 
   let pattern    = NOTES.map(() => new Array(STEPS).fill(0));
-  let bpm        = 100;
   let playing    = false;
   let curStep    = -1;
   let selPreset  = 'Sidabu Petek';
@@ -83,13 +84,12 @@
   // ── Auto-save current state ke localStorage ───────────────────
   const _AS_KEY = 'seq_hasapi_autosave';
   function _asSave() {
-    try { localStorage.setItem(_AS_KEY, JSON.stringify({ pattern: pattern.map(t=>[...t]), vels:[...vels], bpm, noteDur, selPreset })); } catch {}
+    try { localStorage.setItem(_AS_KEY, JSON.stringify({ pattern: pattern.map(t=>[...t]), vels:[...vels], noteDur, selPreset })); } catch {}
   }
   const _asData = (() => { try { return JSON.parse(localStorage.getItem(_AS_KEY)||'null'); } catch { return null; } })();
   if (_asData?.pattern?.length === NOTES.length) {
     pattern   = _asData.pattern.map(t => [...t]);
     vels      = _asData.vels?.length === NOTES.length ? [..._asData.vels] : vels;
-    bpm       = _asData.bpm ?? bpm;
     noteDur   = _asData.noteDur ?? noteDur;
     selPreset = _asData.selPreset ?? selPreset;
     pattern   = [...pattern];
@@ -110,7 +110,7 @@
   const LOOKAHEAD  = 0.025;
   const SCHEDULE_A = 0.1;
 
-  function stepDuration() { return (60 / bpm) / 4; }
+  function stepDuration() { return (60 / get(masterBpm)) / 4; }
 
   function scheduleStep(beat, time) {
     for (let ni = 0; ni < NOTES.length; ni++) {
@@ -133,9 +133,9 @@
   }
 
   async function start() {
-    const ac  = await ensureRunning();
-    _curBeat  = 0;
-    _nextNote = ac.currentTime + 0.1;
+    const { nextNote, curBeat } = await syncToGrid();
+    _curBeat  = curBeat;
+    _nextNote = nextNote;
     playing   = true;
     scheduler();
   }
@@ -145,15 +145,23 @@
     _timerId = null;
     playing  = false;
     curStep  = -1;
+    leaveGrid();
   }
 
   function togglePlay() { playing ? stop() : start(); }
   function clearAll()   { pattern = NOTES.map(() => new Array(STEPS).fill(0)); }
 
-  $: { pattern; vels; bpm; noteDur; selPreset; _asSave(); }
-  $: if (playing && bpm) { clearTimeout(_timerId); _timerId = setTimeout(scheduler, 0); }
+  $: { pattern; vels; $masterBpm; noteDur; selPreset; _asSave(); }
 
-  onDestroy(() => { clearTimeout(_timerId); unsubSensor(); });
+  let _lastCmdTs = 0;
+  const _unsubCmd = masterCommand.subscribe(({ cmd, ts }) => {
+    if (ts <= _lastCmdTs) return;
+    _lastCmdTs = ts;
+    if (cmd === 'play' && !playing) start();
+    else if (cmd === 'stop' && playing) stop();
+  });
+
+  onDestroy(() => { clearTimeout(_timerId); if (playing) leaveGrid(); _unsubCmd(); unsubSensor(); });
 </script>
 
 <div class="flex flex-col gap-3 h-full bg-slate-950 rounded-lg p-3 overflow-y-auto">
@@ -176,9 +184,9 @@
     <!-- BPM -->
     <div class="flex items-center gap-2 bg-slate-900 rounded-lg px-3 py-1.5 border border-slate-800">
       <span class="text-xs text-slate-600 w-8">BPM</span>
-      <input type="range" min="40" max="180" step="1" bind:value={bpm}
+      <input type="range" min="40" max="220" step="1" bind:value={$masterBpm}
         class="w-24 accent-pink-500 cursor-pointer" />
-      <span class="text-xs font-mono font-bold text-pink-400 w-8 text-right">{bpm}</span>
+      <span class="text-xs font-mono font-bold text-pink-400 w-8 text-right">{$masterBpm}</span>
     </div>
 
     <!-- Tempoh nota -->

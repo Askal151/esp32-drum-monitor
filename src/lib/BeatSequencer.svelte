@@ -5,10 +5,12 @@
 -->
 <script>
   import { onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import {
     scheduleKick, scheduleSnare, scheduleHihat,
     scheduleClap, scheduleRim, getAudioCtx, ensureRunning, isRunning, unlockAudio
   } from './audio.js';
+  import { masterBpm, syncToGrid, leaveGrid, masterCommand } from './transport.js';
 
   const STEPS   = 16;
   const TRACKS  = [
@@ -60,7 +62,6 @@
 
   // Grid state: pattern[trackIdx][stepIdx] = 0/1
   let pattern = TRACKS.map(t => new Array(STEPS).fill(0));
-  let bpm       = 120;
   let playing   = false;
   let sensorMode = false;   // sensor trigger step sequencer
   let curStep   = -1;
@@ -81,13 +82,12 @@
   // ── Auto-save current state ke localStorage ───────────────────
   const _AS_KEY = 'seq_beat_autosave';
   function _asSave() {
-    try { localStorage.setItem(_AS_KEY, JSON.stringify({ pattern: pattern.map(t=>[...t]), vels:[...vels], bpm, selPreset })); } catch {}
+    try { localStorage.setItem(_AS_KEY, JSON.stringify({ pattern: pattern.map(t=>[...t]), vels:[...vels], selPreset })); } catch {}
   }
   const _asData = (() => { try { return JSON.parse(localStorage.getItem(_AS_KEY)||'null'); } catch { return null; } })();
   if (_asData?.pattern?.length === TRACKS.length) {
     pattern   = _asData.pattern.map(t => [...t]);
     vels      = _asData.vels?.length === TRACKS.length ? [..._asData.vels] : vels;
-    bpm       = _asData.bpm ?? bpm;
     selPreset = _asData.selPreset ?? selPreset;
     pattern   = [...pattern];
   } else {
@@ -107,7 +107,7 @@
   const LOOKAHEAD  = 0.025;   // s — seberapa jauh ke hadapan untuk schedule
   const SCHEDULE_A = 0.1;     // s — window schedule
 
-  function stepDuration() { return (60 / bpm) / 4; }   // 1/16 note
+  function stepDuration() { return (60 / get(masterBpm)) / 4; }   // 1/16 note
 
   function scheduleStep(beat, time) {
     for (let ti = 0; ti < TRACKS.length; ti++) {
@@ -131,9 +131,9 @@
   }
 
   async function start() {
-    const ac = await ensureRunning();   // tunggu AudioContext running
-    _curBeat  = 0;
-    _nextNote = ac.currentTime + 0.1;  // jadual dari sekarang + 100ms buffer
+    const { nextNote, curBeat } = await syncToGrid();
+    _curBeat  = curBeat;
+    _nextNote = nextNote;
     playing   = true;
     scheduler();
   }
@@ -143,6 +143,7 @@
     _timerId = null;
     playing  = false;
     curStep  = -1;
+    leaveGrid();
   }
 
   function togglePlay() { playing ? stop() : start(); }
@@ -151,25 +152,27 @@
     pattern = TRACKS.map(() => new Array(STEPS).fill(0));
   }
 
-  $: { pattern; vels; bpm; selPreset; _asSave(); }
+  $: { pattern; vels; $masterBpm; selPreset; _asSave(); }
 
-  // Restart scheduler bila BPM tukar semasa bermain
-  $: if (playing && bpm) {
-    clearTimeout(_timerId);
-    _timerId = setTimeout(scheduler, 0);
-  }
+  let _lastCmdTs = 0;
+  const _unsubCmd = masterCommand.subscribe(({ cmd, ts }) => {
+    if (ts <= _lastCmdTs) return;
+    _lastCmdTs = ts;
+    if (cmd === 'play' && !playing) start();
+    else if (cmd === 'stop' && playing) stop();
+  });
 
-  onDestroy(() => { clearTimeout(_timerId); });
+  onDestroy(() => { clearTimeout(_timerId); if (playing) leaveGrid(); _unsubCmd(); });
 
   export function getSnapshot() {
-    return { pattern: pattern.map(t => [...t]), vels: [...vels], bpm, selPreset };
+    return { pattern: pattern.map(t => [...t]), vels: [...vels], bpm: get(masterBpm), selPreset };
   }
   export function loadSnapshot(snap) {
     if (!snap) return;
     stop();
     pattern  = snap.pattern.map(t => [...t]);
     vels     = [...snap.vels];
-    bpm      = snap.bpm ?? bpm;
+    if (snap.bpm) masterBpm.set(snap.bpm);
     selPreset = snap.selPreset ?? '';
     pattern  = [...pattern];
   }
@@ -195,10 +198,10 @@
       <span class="text-xs text-slate-600 w-8">BPM</span>
       <input
         type="range" min="60" max="200" step="1"
-        bind:value={bpm}
+        bind:value={$masterBpm}
         class="w-28 accent-cyan-500 cursor-pointer"
       />
-      <span class="text-xs font-mono font-bold text-cyan-400 w-8 text-right">{bpm}</span>
+      <span class="text-xs font-mono font-bold text-cyan-400 w-8 text-right">{$masterBpm}</span>
     </div>
 
     <!-- Preset -->

@@ -1349,6 +1349,362 @@ export function scheduleElecSnare(time, velocity = 1.0, rate = 1.0) {
   schedCleanup([noise, hp, bp, ng, body, bg, master], 0.25);
 }
 
+// ── Sitar (India / Klasik) ─────────────────────────────────────
+// Petikan dawai sitar: Karplus-Strong + sympathetic strings + jawari buzz
+export function scheduleSitar(freq, time, velocity = 0.8) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+
+  const master = ac.createGain();
+  const bodyEQ = ac.createBiquadFilter();
+  bodyEQ.type = 'peaking'; bodyEQ.frequency.value = 480; bodyEQ.Q.value = 2.2; bodyEQ.gain.value = 6;
+  master.connect(bodyEQ); bodyEQ.connect(ac.destination);
+
+  const { reverb } = getSynthChain(ac);
+  const rvG = ac.createGain(); rvG.gain.value = 0.22;
+  master.connect(rvG); rvG.connect(reverb);
+
+  // Sawtooth → sweeping LP (simulasi Karplus-Strong plucked string)
+  const rich = Math.max(2.5, Math.min(12, 3800 / freq));
+  const lpf  = ac.createBiquadFilter();
+  lpf.type   = 'lowpass'; lpf.Q.value = 3.0;
+  lpf.frequency.setValueAtTime(freq * rich * 3.0, time);
+  lpf.frequency.exponentialRampToValueAtTime(freq * rich * 0.8, time + 0.05);
+  lpf.frequency.exponentialRampToValueAtTime(freq * 2.5, time + 0.4);
+  lpf.frequency.exponentialRampToValueAtTime(freq * 1.4, time + 2.0);
+
+  const osc1 = ac.createOscillator(); osc1.type = 'sawtooth';
+  osc1.frequency.setValueAtTime(freq * 1.022, time);
+  osc1.frequency.exponentialRampToValueAtTime(freq, time + 0.03);
+  const env1 = ac.createGain();
+  env1.gain.setValueAtTime(0, time);
+  env1.gain.linearRampToValueAtTime(vel * 0.65, time + 0.003);
+  env1.gain.exponentialRampToValueAtTime(0.001, time + 2.5);
+  osc1.connect(lpf); lpf.connect(env1); env1.connect(master);
+
+  // Jawari buzz — harmonik tersenget ciri khas sitar
+  const bz1 = ac.createOscillator(); bz1.type = 'sawtooth'; bz1.frequency.value = freq * 2.01;
+  const bz1g = ac.createGain(); bz1g.gain.setValueAtTime(vel * 0.12, time); bz1g.gain.exponentialRampToValueAtTime(0.001, time + 0.4);
+  bz1.connect(bz1g); bz1g.connect(master);
+
+  const bz2 = ac.createOscillator(); bz2.type = 'sine'; bz2.frequency.value = freq * 3.02;
+  const bz2g = ac.createGain(); bz2g.gain.setValueAtTime(vel * 0.07, time); bz2g.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+  bz2.connect(bz2g); bz2g.connect(master);
+
+  // Sympathetic strings (tarab) — vibrasi simpatetik dawai tambahan
+  const sympF = [freq * 0.5, freq * 1.333, freq * 2.0, freq * 2.667];
+  const sympA = [0.08, 0.10, 0.06, 0.04];
+  const sympD = [1.5, 1.2, 0.8, 0.5];
+  const sympNodes = [];
+  for (let i = 0; i < sympF.length; i++) {
+    const so = ac.createOscillator(); so.type = 'sine'; so.frequency.value = sympF[i];
+    const sg = ac.createGain();
+    sg.gain.setValueAtTime(0, time + 0.01 + i * 0.006);
+    sg.gain.linearRampToValueAtTime(vel * sympA[i], time + 0.04 + i * 0.006);
+    sg.gain.exponentialRampToValueAtTime(0.001, time + sympD[i]);
+    so.connect(sg); sg.connect(master);
+    so.start(time); so.stop(time + sympD[i] + 0.02);
+    sympNodes.push(so, sg);
+  }
+
+  // Petikan transient
+  const nSz = Math.floor(ac.sampleRate * 0.004);
+  const nBuf = ac.createBuffer(1, nSz, ac.sampleRate);
+  const nD = nBuf.getChannelData(0);
+  for (let i = 0; i < nSz; i++) nD[i] = (Math.random() * 2 - 1) * (1 - i / nSz);
+  const pluck = ac.createBufferSource(); pluck.buffer = nBuf;
+  const plBp = ac.createBiquadFilter(); plBp.type = 'bandpass'; plBp.frequency.value = Math.min(freq * 6, 10000); plBp.Q.value = 1.4;
+  const plG = ac.createGain(); plG.gain.setValueAtTime(0.4, time); plG.gain.exponentialRampToValueAtTime(0.001, time + 0.006);
+  pluck.connect(plBp); plBp.connect(plG); plG.connect(master);
+
+  pluck.start(time); pluck.stop(time + 0.007);
+  osc1.start(time);  osc1.stop(time + 2.55);
+  bz1.start(time);   bz1.stop(time + 0.42);
+  bz2.start(time);   bz2.stop(time + 0.22);
+  schedCleanup([pluck, plBp, plG, osc1, lpf, env1, bz1, bz1g, bz2, bz2g, ...sympNodes, master, bodyEQ, rvG], 2.7);
+}
+
+// ── Biola (Violin — dawai gesek) ───────────────────────────────
+// Bunyi gesek perlahan, vibrato, sustain panjang
+export function scheduleBiola(freq, time, velocity = 0.7, duration = 0.5) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  const dur = Math.max(0.05, duration);
+  const { comp, reverb } = getSynthChain(ac);
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(0, time);
+  master.gain.linearRampToValueAtTime(vel * 0.5, time + 0.06);
+  master.gain.setValueAtTime(vel * 0.48, time + dur - 0.05);
+  master.gain.linearRampToValueAtTime(0, time + dur + 0.06);
+  master.connect(comp);
+
+  const bodyEQ = ac.createBiquadFilter();
+  bodyEQ.type = 'peaking'; bodyEQ.frequency.value = 380; bodyEQ.Q.value = 3.0; bodyEQ.gain.value = 5;
+  master.connect(bodyEQ); bodyEQ.connect(comp);
+
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = freq * 8; lp.Q.value = 0.7;
+
+  const osc = ac.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = freq;
+  osc.connect(lp); lp.connect(master);
+
+  // Vibrato LFO
+  const lfo = ac.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 5.5;
+  const lfoG = ac.createGain(); lfoG.gain.value = freq * 0.008;
+  lfo.connect(lfoG); lfoG.connect(osc.frequency);
+
+  // Noise gesek (bow noise)
+  const nSz = Math.floor(ac.sampleRate * 0.04);
+  const nBuf = ac.createBuffer(1, nSz, ac.sampleRate);
+  const nD = nBuf.getChannelData(0);
+  for (let i = 0; i < nSz; i++) nD[i] = Math.random() * 2 - 1;
+  const noise = ac.createBufferSource(); noise.buffer = nBuf;
+  const nbp = ac.createBiquadFilter(); nbp.type = 'bandpass'; nbp.frequency.value = freq * 2; nbp.Q.value = 2.0;
+  const ng = ac.createGain();
+  ng.gain.setValueAtTime(vel * 0.15, time); ng.gain.linearRampToValueAtTime(0, time + 0.04);
+  noise.connect(nbp); nbp.connect(ng); ng.connect(master);
+
+  const h2 = ac.createOscillator(); h2.type = 'sine'; h2.frequency.value = freq * 2;
+  const h2g = ac.createGain();
+  h2g.gain.setValueAtTime(0, time); h2g.gain.linearRampToValueAtTime(vel * 0.18, time + 0.06);
+  h2g.gain.setValueAtTime(vel * 0.15, time + dur - 0.05);
+  h2g.gain.linearRampToValueAtTime(0, time + dur + 0.06);
+  h2.connect(h2g); h2g.connect(master);
+
+  const rvG = ac.createGain(); rvG.gain.value = 0.32;
+  master.connect(rvG); rvG.connect(reverb);
+
+  const stopAt = time + dur + 0.1;
+  osc.start(time);  osc.stop(stopAt);
+  lfo.start(time);  lfo.stop(stopAt);
+  noise.start(time); noise.stop(time + 0.045);
+  h2.start(time);   h2.stop(stopAt);
+  schedCleanup([osc, lp, lfo, lfoG, noise, nbp, ng, h2, h2g, master, bodyEQ, rvG], dur + 0.2);
+}
+
+// ── Suling (Seruling Bambu Nusantara) ──────────────────────────
+// Tiupan nafas + sine murni + harmonik bambu
+export function scheduleSuling(freq, time, velocity = 0.7, duration = 0.45) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  const dur = Math.max(0.05, duration);
+  const { comp, reverb } = getSynthChain(ac);
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(0, time);
+  master.gain.linearRampToValueAtTime(vel * 0.52, time + 0.08);  // nafas perlahan
+  master.gain.setValueAtTime(vel * 0.50, time + dur - 0.05);
+  master.gain.linearRampToValueAtTime(0, time + dur + 0.04);
+  master.connect(comp);
+
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = freq * 5; lp.Q.value = 0.8;
+
+  // Fundamental: hampir sine murni (suling sangat bersih)
+  const osc = ac.createOscillator(); osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq * 1.003, time);
+  osc.frequency.exponentialRampToValueAtTime(freq, time + 0.07);
+  osc.connect(lp); lp.connect(master);
+
+  // Bunyi nafas (breathy air characteristic of bamboo)
+  const nSz = Math.floor(ac.sampleRate * 0.18);
+  const nBuf = ac.createBuffer(1, nSz, ac.sampleRate);
+  const nD = nBuf.getChannelData(0);
+  for (let i = 0; i < nSz; i++) nD[i] = Math.random() * 2 - 1;
+  const noise = ac.createBufferSource(); noise.buffer = nBuf;
+  const nhp = ac.createBiquadFilter(); nhp.type = 'bandpass'; nhp.frequency.value = freq * 3; nhp.Q.value = 1.5;
+  const ng = ac.createGain();
+  ng.gain.setValueAtTime(0, time); ng.gain.linearRampToValueAtTime(vel * 0.10, time + 0.05);
+  ng.gain.setValueAtTime(vel * 0.07, time + dur - 0.04);
+  ng.gain.linearRampToValueAtTime(0, time + dur + 0.03);
+  noise.connect(nhp); nhp.connect(ng); ng.connect(master);
+
+  // Harmonik oktaf (resonans bambu)
+  const osc2 = ac.createOscillator(); osc2.type = 'sine'; osc2.frequency.value = freq * 2;
+  const g2 = ac.createGain();
+  g2.gain.setValueAtTime(0, time); g2.gain.linearRampToValueAtTime(vel * 0.13, time + 0.08);
+  g2.gain.setValueAtTime(vel * 0.11, time + dur - 0.05);
+  g2.gain.linearRampToValueAtTime(0, time + dur + 0.04);
+  osc2.connect(g2); g2.connect(master);
+
+  const rvG = ac.createGain(); rvG.gain.value = 0.35;
+  master.connect(rvG); rvG.connect(reverb);
+
+  const stopAt = time + dur + 0.08;
+  osc.start(time);   osc.stop(stopAt);
+  noise.start(time); noise.stop(stopAt);
+  osc2.start(time);  osc2.stop(stopAt);
+  schedCleanup([osc, lp, noise, nhp, ng, osc2, g2, master, rvG], dur + 0.15);
+}
+
+// ── Terompet (Trumpet) ─────────────────────────────────────────
+// Bunyi loyang terang: sawtooth → bandpass formant + harmonik
+export function scheduleTrumpet(freq, time, velocity = 0.8, duration = 0.35) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  const dur = Math.max(0.05, duration);
+  const { comp } = getSynthChain(ac);
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(0, time);
+  master.gain.linearRampToValueAtTime(vel * 0.58, time + 0.018);  // serangan loyang cepat
+  master.gain.setValueAtTime(vel * 0.52, time + dur - 0.03);
+  master.gain.linearRampToValueAtTime(0, time + dur + 0.02);
+  master.connect(comp);
+
+  // Formant loyang — sawtooth + bandpass utama
+  const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq * 3; bp.Q.value = 2.5;
+  const osc = ac.createOscillator(); osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(freq * 0.99, time);
+  osc.frequency.linearRampToValueAtTime(freq, time + 0.015);  // lipping naik ke pitch
+  osc.connect(bp); bp.connect(master);
+
+  // Slight distortion untuk grit loyang
+  const wave = ac.createWaveShaper(); wave.curve = makeDistCurve(28);
+  bp.connect(wave); wave.connect(master);
+
+  // Harmonik 2 & 3 untuk kekayaan loyang
+  const h2 = ac.createOscillator(); h2.type = 'sine'; h2.frequency.value = freq * 2;
+  const h2g = ac.createGain();
+  h2g.gain.setValueAtTime(0, time); h2g.gain.linearRampToValueAtTime(vel * 0.22, time + 0.018);
+  h2g.gain.setValueAtTime(vel * 0.20, time + dur - 0.03);
+  h2g.gain.linearRampToValueAtTime(0, time + dur + 0.02);
+  h2.connect(h2g); h2g.connect(master);
+
+  const h3 = ac.createOscillator(); h3.type = 'sine'; h3.frequency.value = freq * 3;
+  const h3g = ac.createGain();
+  h3g.gain.setValueAtTime(0, time); h3g.gain.linearRampToValueAtTime(vel * 0.12, time + 0.018);
+  h3g.gain.exponentialRampToValueAtTime(0.001, time + dur + 0.02);
+  h3.connect(h3g); h3g.connect(master);
+
+  const stopAt = time + dur + 0.04;
+  osc.start(time); osc.stop(stopAt);
+  h2.start(time);  h2.stop(stopAt);
+  h3.start(time);  h3.stop(stopAt);
+  schedCleanup([osc, bp, wave, h2, h2g, h3, h3g, master], dur + 0.08);
+}
+
+// ── Synth Pad (Ambient Pad) ────────────────────────────────────
+// 3 osc tersenget + LP sweep perlahan + reverb tebal = ambient pad
+export function scheduleSynthPad(freq, time, velocity = 0.6, duration = 1.2) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  const dur = Math.max(0.2, duration);
+  const { comp, reverb } = getSynthChain(ac);
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(0, time);
+  master.gain.linearRampToValueAtTime(vel * 0.42, time + 0.28);  // serangan sangat perlahan
+  master.gain.setValueAtTime(vel * 0.40, time + dur - 0.12);
+  master.gain.linearRampToValueAtTime(0, time + dur + 0.5);       // lepas panjang
+  master.connect(comp);
+
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 1.8;
+  lp.frequency.setValueAtTime(320, time);
+  lp.frequency.linearRampToValueAtTime(freq * 4.5, time + 0.3);
+  lp.frequency.setValueAtTime(freq * 3.5, time + dur - 0.12);
+  lp.frequency.linearRampToValueAtTime(freq * 1.5, time + dur + 0.5);
+
+  // 3 osc slightly detuned untuk ketebalan pad
+  const osc1 = ac.createOscillator(); osc1.type = 'sawtooth'; osc1.frequency.value = freq;
+  const osc2 = ac.createOscillator(); osc2.type = 'sawtooth'; osc2.frequency.value = freq * 1.006;
+  const osc3 = ac.createOscillator(); osc3.type = 'sawtooth'; osc3.frequency.value = freq * 0.994;
+  const sub  = ac.createOscillator(); sub.type  = 'sine';     sub.frequency.value  = freq * 0.5;
+  const subG = ac.createGain(); subG.gain.value = 0.22;
+
+  osc1.connect(lp); osc2.connect(lp); osc3.connect(lp); sub.connect(subG); subG.connect(lp);
+  lp.connect(master);
+
+  const rvG = ac.createGain(); rvG.gain.value = 0.55;
+  master.connect(rvG); rvG.connect(reverb);
+
+  const stopAt = time + dur + 0.6;
+  osc1.start(time); osc1.stop(stopAt);
+  osc2.start(time); osc2.stop(stopAt);
+  osc3.start(time); osc3.stop(stopAt);
+  sub.start(time);  sub.stop(stopAt);
+  schedCleanup([osc1, osc2, osc3, sub, subG, lp, master, rvG], dur + 0.75);
+}
+
+// ── Synth Lead (Melodic Lead) ──────────────────────────────────
+// Square wave + filter envelope tajam = lead synth klasik
+export function scheduleSynthLead(freq, time, velocity = 0.8, duration = 0.25) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  const dur = Math.max(0.05, duration);
+  const { comp, reverb } = getSynthChain(ac);
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(0, time);
+  master.gain.linearRampToValueAtTime(vel * 0.48, time + 0.008);
+  master.gain.setValueAtTime(vel * 0.44, time + dur - 0.02);
+  master.gain.linearRampToValueAtTime(0, time + dur + 0.04);
+  master.connect(comp);
+
+  // Filter envelope — sweep tanda khas synth lead
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5.0;
+  lp.frequency.setValueAtTime(freq * 0.5, time);
+  lp.frequency.linearRampToValueAtTime(freq * 8, time + 0.01);
+  lp.frequency.exponentialRampToValueAtTime(freq * 2.5, time + dur - 0.01);
+  lp.frequency.linearRampToValueAtTime(freq * 0.8, time + dur + 0.04);
+
+  const osc1 = ac.createOscillator(); osc1.type = 'square';
+  osc1.frequency.setValueAtTime(freq * 1.003, time);
+  osc1.frequency.exponentialRampToValueAtTime(freq, time + 0.008);
+  osc1.connect(lp); lp.connect(master);
+
+  const osc2 = ac.createOscillator(); osc2.type = 'sawtooth'; osc2.frequency.value = freq * 0.997;
+  const g2 = ac.createGain(); g2.gain.value = 0.32;
+  osc2.connect(g2); g2.connect(lp);
+
+  const sub = ac.createOscillator(); sub.type = 'sine'; sub.frequency.value = freq * 0.5;
+  const subG = ac.createGain(); subG.gain.value = 0.22;
+  sub.connect(subG); subG.connect(master);
+
+  const rvG = ac.createGain(); rvG.gain.value = 0.18;
+  master.connect(rvG); rvG.connect(reverb);
+
+  const stopAt = time + dur + 0.06;
+  osc1.start(time); osc1.stop(stopAt);
+  osc2.start(time); osc2.stop(stopAt);
+  sub.start(time);  sub.stop(stopAt);
+  schedCleanup([osc1, osc2, g2, sub, subG, lp, master, rvG], dur + 0.12);
+}
+
+// ── Synth Bass (Electronic Bass) ──────────────────────────────
+// Sub sine + sawtooth layer + distortion ringan = bass elektronik
+export function scheduleSynthBass(freq, time, velocity = 0.9, duration = 0.3) {
+  const ac  = getCtx();
+  const vel = Math.max(0.1, Math.min(1.0, velocity));
+  const dur = Math.max(0.05, duration);
+  const { comp } = getSynthChain(ac);
+
+  const master = ac.createGain();
+  master.gain.setValueAtTime(vel * 0.85, time);
+  master.gain.setValueAtTime(vel * 0.75, time + dur - 0.02);
+  master.gain.linearRampToValueAtTime(0, time + dur + 0.025);
+  master.connect(comp);
+
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 2.2;
+  lp.frequency.setValueAtTime(freq * 8, time);
+  lp.frequency.exponentialRampToValueAtTime(freq * 2, time + 0.1);
+
+  const dist = ac.createWaveShaper(); dist.curve = makeDistCurve(55);
+
+  const sub = ac.createOscillator(); sub.type = 'sine';
+  sub.frequency.setValueAtTime(freq * 1.012, time);
+  sub.frequency.exponentialRampToValueAtTime(freq, time + 0.012);
+  sub.connect(lp); lp.connect(dist); dist.connect(master);
+
+  const saw = ac.createOscillator(); saw.type = 'sawtooth'; saw.frequency.value = freq;
+  const sawG = ac.createGain(); sawG.gain.value = 0.32;
+  saw.connect(sawG); sawG.connect(lp);
+
+  const stopAt = time + dur + 0.04;
+  sub.start(time); sub.stop(stopAt);
+  saw.start(time); saw.stop(stopAt);
+  schedCleanup([sub, saw, sawG, lp, dist, master], dur + 0.08);
+}
+
 // ── WAV file player ────────────────────────────────────────────
 // Lazy-load + cache supaya tidak fetch berulang kali
 const _wavCache = new Map();

@@ -7,8 +7,10 @@
 -->
 <script>
   import { onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import { scheduleSynth, getAudioCtx, ensureRunning } from './audio.js';
   import { sensors } from './serial.js';
+  import { masterBpm, syncToGrid, leaveGrid, masterCommand } from './transport.js';
 
   const STEPS = 16;
 
@@ -26,7 +28,6 @@
 
   // step state: -1 = off, 0..7 = indeks SCALE
   let steps = new Array(STEPS).fill(-1);
-  let bpm   = 120;
   let playing   = false;
   let curStep   = -1;
   let sensorMode = false;
@@ -81,17 +82,16 @@
     selPreset = name;
     const p = PRESETS[name];
     steps = [...p.steps];
-    bpm   = p.bpm;
+    masterBpm.set(p.bpm);
   }
   // ── Auto-save current state ke localStorage ───────────────────
   const _AS_KEY = 'seq_synth_autosave';
   function _asSave() {
-    try { localStorage.setItem(_AS_KEY, JSON.stringify({ steps:[...steps], bpm, vel, selPreset })); } catch {}
+    try { localStorage.setItem(_AS_KEY, JSON.stringify({ steps:[...steps], vel, selPreset })); } catch {}
   }
   const _asData = (() => { try { return JSON.parse(localStorage.getItem(_AS_KEY)||'null'); } catch { return null; } })();
   if (_asData?.steps?.length === STEPS) {
     steps     = [..._asData.steps];
-    bpm       = _asData.bpm ?? bpm;
     vel       = _asData.vel ?? vel;
     selPreset = _asData.selPreset ?? selPreset;
   } else {
@@ -128,7 +128,7 @@
   const LOOKAHEAD  = 0.025;   // s
   const SCHEDULE_A = 0.1;     // s
 
-  function stepDur() { return (60 / bpm) / 4; }   // 1/16 note
+  function stepDur() { return (60 / get(masterBpm)) / 4; }   // 1/16 note
 
   function scheduleStep(beat, time) {
     const noteIdx = steps[beat];
@@ -153,9 +153,9 @@
   }
 
   async function start() {
-    const ac  = await ensureRunning();
-    _curBeat  = 0;
-    _nextNote = ac.currentTime + 0.1;
+    const { nextNote, curBeat } = await syncToGrid();
+    _curBeat  = curBeat;
+    _nextNote = nextNote;
     playing   = true;
     scheduler();
   }
@@ -165,31 +165,34 @@
     _timerId = null;
     playing  = false;
     curStep  = -1;
+    leaveGrid();
   }
 
   function togglePlay() { playing ? stop() : start(); }
 
   function clearAll() { steps = new Array(STEPS).fill(-1); }
 
-  $: { steps; bpm; vel; selPreset; _asSave(); }
+  $: { steps; $masterBpm; vel; selPreset; _asSave(); }
 
-  // Restart scheduler bila BPM tukar semasa bermain
-  $: if (playing && bpm) {
-    clearTimeout(_timerId);
-    _timerId = setTimeout(scheduler, 0);
-  }
+  let _lastCmdTs = 0;
+  const _unsubCmd = masterCommand.subscribe(({ cmd, ts }) => {
+    if (ts <= _lastCmdTs) return;
+    _lastCmdTs = ts;
+    if (cmd === 'play' && !playing) start();
+    else if (cmd === 'stop' && playing) stop();
+  });
 
-  onDestroy(() => { clearTimeout(_timerId); unsubSensor(); });
+  onDestroy(() => { clearTimeout(_timerId); if (playing) leaveGrid(); _unsubCmd(); unsubSensor(); });
 
   export function getSnapshot() {
-    return { steps: [...steps], vel, bpm, selPreset };
+    return { steps: [...steps], vel, bpm: get(masterBpm), selPreset };
   }
   export function loadSnapshot(snap) {
     if (!snap) return;
     stop();
     steps     = [...snap.steps];
     vel       = snap.vel ?? vel;
-    bpm       = snap.bpm ?? bpm;
+    if (snap.bpm) masterBpm.set(snap.bpm);
     selPreset = snap.selPreset ?? '';
     steps     = [...steps];
   }
@@ -215,10 +218,10 @@
       <span class="text-xs text-slate-600 w-8">BPM</span>
       <input
         type="range" min="60" max="200" step="1"
-        bind:value={bpm}
+        bind:value={$masterBpm}
         class="w-28 accent-violet-500 cursor-pointer"
       />
-      <span class="text-xs font-mono font-bold text-violet-400 w-8 text-right">{bpm}</span>
+      <span class="text-xs font-mono font-bold text-violet-400 w-8 text-right">{$masterBpm}</span>
     </div>
 
     <!-- Velocity -->

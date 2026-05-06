@@ -5,11 +5,13 @@
 -->
 <script>
   import { onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import {
     scheduleTaganing, scheduleOdap, scheduleHesek, scheduleGordang,
     getAudioCtx, ensureRunning
   } from './audio.js';
   import { sensors } from './serial.js';
+  import { masterBpm, syncToGrid, leaveGrid, masterCommand } from './transport.js';
 
   const STEPS = 16;
   const TRACKS = [
@@ -54,7 +56,6 @@
   };
 
   let pattern    = TRACKS.map(() => new Array(STEPS).fill(0));
-  let bpm        = 120;
   let playing    = false;
   let curStep    = -1;
   let selPreset  = 'Sidabu Petek';
@@ -77,13 +78,12 @@
   // ── Auto-save current state ke localStorage ───────────────────
   const _AS_KEY = 'seq_tagading_autosave';
   function _asSave() {
-    try { localStorage.setItem(_AS_KEY, JSON.stringify({ pattern: pattern.map(t=>[...t]), vels:[...vels], bpm, selPreset })); } catch {}
+    try { localStorage.setItem(_AS_KEY, JSON.stringify({ pattern: pattern.map(t=>[...t]), vels:[...vels], selPreset })); } catch {}
   }
   const _asData = (() => { try { return JSON.parse(localStorage.getItem(_AS_KEY)||'null'); } catch { return null; } })();
   if (_asData?.pattern?.length === TRACKS.length) {
     pattern   = _asData.pattern.map(t => [...t]);
     vels      = _asData.vels?.length === TRACKS.length ? [..._asData.vels] : vels;
-    bpm       = _asData.bpm ?? bpm;
     selPreset = _asData.selPreset ?? selPreset;
     pattern   = [...pattern];
   } else {
@@ -103,7 +103,7 @@
   const LOOKAHEAD  = 0.025;
   const SCHEDULE_A = 0.1;
 
-  function stepDuration() { return (60 / bpm) / 4; }
+  function stepDuration() { return (60 / get(masterBpm)) / 4; }
 
   function scheduleStep(beat, time) {
     for (let ti = 0; ti < TRACKS.length; ti++) {
@@ -124,9 +124,9 @@
   }
 
   async function start() {
-    const ac  = await ensureRunning();
-    _curBeat  = 0;
-    _nextNote = ac.currentTime + 0.1;
+    const { nextNote, curBeat } = await syncToGrid();
+    _curBeat  = curBeat;
+    _nextNote = nextNote;
     playing   = true;
     scheduler();
   }
@@ -136,25 +136,33 @@
     _timerId = null;
     playing  = false;
     curStep  = -1;
+    leaveGrid();
   }
 
   function togglePlay() { playing ? stop() : start(); }
   function clearAll()   { pattern = TRACKS.map(() => new Array(STEPS).fill(0)); }
 
-  $: { pattern; vels; bpm; selPreset; _asSave(); }
-  $: if (playing && bpm) { clearTimeout(_timerId); _timerId = setTimeout(scheduler, 0); }
+  $: { pattern; vels; $masterBpm; selPreset; _asSave(); }
 
-  onDestroy(() => { clearTimeout(_timerId); unsubSensor(); });
+  let _lastCmdTs = 0;
+  const _unsubCmd = masterCommand.subscribe(({ cmd, ts }) => {
+    if (ts <= _lastCmdTs) return;
+    _lastCmdTs = ts;
+    if (cmd === 'play' && !playing) start();
+    else if (cmd === 'stop' && playing) stop();
+  });
+
+  onDestroy(() => { clearTimeout(_timerId); if (playing) leaveGrid(); _unsubCmd(); unsubSensor(); });
 
   export function getSnapshot() {
-    return { pattern: pattern.map(t => [...t]), vels: [...vels], bpm, selPreset };
+    return { pattern: pattern.map(t => [...t]), vels: [...vels], bpm: get(masterBpm), selPreset };
   }
   export function loadSnapshot(snap) {
     if (!snap) return;
     stop();
     pattern  = snap.pattern.map(t => [...t]);
     vels     = [...snap.vels];
-    bpm      = snap.bpm ?? bpm;
+    if (snap.bpm) masterBpm.set(snap.bpm);
     selPreset = snap.selPreset ?? '';
     pattern  = [...pattern];
   }
@@ -180,9 +188,9 @@
     <!-- BPM -->
     <div class="flex items-center gap-2 bg-slate-900 rounded-lg px-3 py-1.5 border border-slate-800">
       <span class="text-xs text-slate-600 w-8">BPM</span>
-      <input type="range" min="60" max="220" step="1" bind:value={bpm}
+      <input type="range" min="60" max="220" step="1" bind:value={$masterBpm}
         class="w-24 accent-amber-500 cursor-pointer" />
-      <span class="text-xs font-mono font-bold text-amber-400 w-8 text-right">{bpm}</span>
+      <span class="text-xs font-mono font-bold text-amber-400 w-8 text-right">{$masterBpm}</span>
     </div>
 
     <!-- Preset -->

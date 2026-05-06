@@ -249,14 +249,20 @@ void calibrateBaseline() {
     noiseFloor[s] = (int16_t)noise;
 
     // Auto-set threshold berdasarkan noise floor setiap sensor
-    // L1=12× → margin lebih lebar dari noise, elak false trigger
-    // L2=30× → sederhana
-    // L3=75× → kuat
-    // L4=150× → sangat kuat
-    thresh[s][0] = max(noise * 12,   50);
-    thresh[s][1] = max(noise * 30,  150);
-    thresh[s][2] = max(noise * 75,  400);
-    thresh[s][3] = max(noise * 150, 800);
+    // Minimum floor diskala mengikut resolusi ADC:
+    //   ADS1015 (12-bit, 1mV/count)   → floor standard
+    //   ADS1115 (16-bit, 0.0625mV/count) → floor ×16 untuk sensitiviti setara
+    // Tanpa scaling ini, ADS1115 (S5-S8) akan trigger terlalu mudah
+    // kerana noise floor dalam raw count sangat kecil → max() ambil floor yang rendah
+    #ifdef DUAL_ADS1115
+    const int fMul = 16;   // semua sensor ADS1115
+    #else
+    const int fMul = (s >= 4) ? 16 : 1;  // S1-S4=ADS1015, S5-S8=ADS1115
+    #endif
+    thresh[s][0] = max(noise * 12,   50  * fMul);
+    thresh[s][1] = max(noise * 30,  150  * fMul);
+    thresh[s][2] = max(noise * 75,  400  * fMul);
+    thresh[s][3] = max(noise * 150, 800  * fMul);
 
     Serial.printf("[INIT S%d] base=%d noise=±%d thr=%d|%d|%d|%d\n", s+1,
       baseline[s], noise,
