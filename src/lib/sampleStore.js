@@ -962,6 +962,18 @@ function _resetTimer() {
   _idleTimer = setTimeout(() => { stopPreviewBuffer(); pickerState.set('idle'); }, IDLE_TIMEOUT);
 }
 
+// ── Urutan visual sample (ikut kumpulan, bukan indeks mentah) ───
+// Bila SAMPLES ada item kumpulan sama tersebar, navigasi sequential
+// akan nampak melompat. Fungsi ini bina semula urutan visual supaya
+// NAV bergerak tepat seperti apa yang dilihat pada skrin.
+function _visualOrder(allS) {
+  const groups = [...new Set(allS.map(s => s.group))];
+  return allS
+    .map((s, i) => ({ i, g: s.group }))
+    .sort((a, b) => groups.indexOf(a.g) - groups.indexOf(b.g))
+    .map(x => x.i);
+}
+
 // ── Button NAV ───────────────────────────────────────────────────
 export function btnNav() {
   const state = get(pickerState);
@@ -978,7 +990,11 @@ export function btnNav() {
   } else if (state === 'sample') {
     const sensor  = get(selectedSensor);
     const allS    = getAllSamples();
-    const nextIdx = (get(cursorIdx)[sensor] + 1) % allS.length;
+    const ordered = _visualOrder(allS);          // urutan visual mengikut kumpulan
+    const cur     = get(cursorIdx)[sensor];
+    const pos     = ordered.indexOf(cur);
+    const nextPos = (pos < 0 || pos >= ordered.length - 1) ? 0 : pos + 1;
+    const nextIdx = ordered[nextPos];
     cursorIdx.update(arr => { const n = [...arr]; n[sensor] = nextIdx; return n; });
   }
 
