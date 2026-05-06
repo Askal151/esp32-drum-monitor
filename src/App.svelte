@@ -23,7 +23,7 @@
     SAMPLE_FNS, BEAT_DATA, getSample,
     sensorSamples, selectedSensor,
     saveSample, deleteSample,
-    btnNav, btnSel, openPicker,
+    btnNav, btnSel,
   } from './lib/sampleStore.js';
 
   const CLR   = ['#22d3ee', '#4ade80', '#f59e0b', '#f472b6', '#a78bfa', '#fb923c', '#34d399', '#f87171'];
@@ -373,8 +373,8 @@
 
       <button
         class="text-xs px-3 py-1.5 rounded-md font-bold ring-1 transition-all bg-amber-950 text-amber-400 ring-amber-900 hover:bg-amber-900"
-        on:click={openPicker}
-        title="Buka picker (sama dengan tekan NAV button)"
+        on:click={() => tab = 'assign'}
+        title="Buka halaman Sample Assign"
       >🎵 Pilih Sample</button>
       {#if $connected}
         <button class="btn-gray" on:click={() => sendCmd('s')}>📋 Status</button>
@@ -520,7 +520,7 @@
           class="rounded-xl border-2 p-2 text-left transition-all duration-200 flex flex-col gap-1"
           style="border-color:{looping ? CLR[i] : sample.id ? CLR[i]+'66' : '#1e293b'};
                  background:{looping ? CLR[i]+'22' : sample.id ? CLR[i]+'0a' : '#0f172a'}"
-          on:click={() => { selectedSensor.set(i); openPicker(); }}
+          on:click={() => { selectedSensor.set(i); tab = 'assign'; }}
         >
           <div class="flex items-center justify-between">
             <div class="text-xs font-bold tracking-widest" style="color:{CLR[i]}">
@@ -572,7 +572,7 @@
           <button
             class="flex items-center gap-1 text-xs px-2 py-0.5 rounded border transition-colors"
             style="border-color:{sample.id ? sample.color+'44' : '#33415544'}; color:{sample.id ? sample.color : '#64748b'}; background:{sample.id ? sample.color+'11' : 'transparent'}"
-            on:click={() => { selectedSensor.set(i); openPicker(); }}
+            on:click={() => { selectedSensor.set(i); tab = 'assign'; }}
           >
             <span>{sample.icon}</span>
             <span>{sample.label}</span>

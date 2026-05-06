@@ -8,7 +8,7 @@
   import {
     SAMPLES, SAMPLE_FNS, getSample,
     sensorSamples, selectedSensor, cursorIdx,
-    saveSample, deleteSample, openPicker,
+    saveSample, deleteSample,
     KIT_PRESETS, loadKitPreset,
   } from './sampleStore.js';
   const SENSOR_NAMES  = ['Congkak 1','Congkak 2','Congkak 3','Congkak 4','Congkak 5','Congkak 6','Congkak 7','Congkak 8'];
@@ -26,6 +26,7 @@
       next[sensorIdx] = sampleIdx;
       return next;
     });
+    saveSample(sensorIdx);
   }
 
   // Scroll item kursor ke dalam view saat berubah
@@ -47,11 +48,6 @@
   <div class="flex flex-col gap-2 shrink-0">
     <div class="flex items-center justify-between">
       <span class="text-xs font-bold tracking-widest text-slate-600">SAMPLE ASSIGN</span>
-      <button
-        class="text-xs px-2.5 py-1 rounded border border-amber-900 text-amber-400 bg-amber-950 hover:bg-amber-900 transition-colors"
-        on:click={openPicker}
-        title="Buka picker (atau tekan NAV button di ESP32)"
-      >🎵 Pilih Sample</button>
     </div>
 
     <!-- Kit Presets -->
@@ -146,19 +142,14 @@
           {/each}
         </div>
 
-        <!-- Save / Delete footer -->
-        {#if isActive}
+        <!-- Delete footer -->
+        {#if isActive && $sensorSamples[si]}
           <div class="flex gap-1 p-1.5 border-t border-slate-800 shrink-0">
             <button
-              class="flex-1 text-xs py-1 rounded font-bold bg-emerald-950 text-emerald-400 border border-emerald-900 hover:bg-emerald-900 transition-colors"
-              on:click|stopPropagation={() => saveSample(si)}
-              title="Simpan sample (atau tekan SEL button di ESP32)"
-            >💾 Simpan</button>
-            <button
-              class="text-xs px-2 py-1 rounded bg-slate-900 text-slate-500 border border-slate-800 hover:text-red-400 hover:border-red-900 transition-colors"
+              class="flex-1 text-xs py-1 rounded bg-slate-900 text-slate-500 border border-slate-800 hover:text-red-400 hover:border-red-900 transition-colors"
               on:click|stopPropagation={() => deleteSample(si)}
               title="Kosongkan sensor"
-            >🗑</button>
+            >🗑 Kosong</button>
           </div>
         {/if}
       </div>
