@@ -107,6 +107,27 @@
           class="flex-1 overflow-y-auto min-h-0 py-1"
           bind:this={listEls[si]}
         >
+          <!-- Pilihan Kosong -->
+          <button
+            data-idx="-1"
+            class="w-full text-left px-2 py-1 text-xs flex items-center gap-1.5 transition-colors
+              {cursor === -1 && isActive
+                ? 'font-bold'
+                : !savedId
+                  ? 'text-slate-400'
+                  : 'text-slate-600 hover:text-slate-400'}"
+            style={cursor === -1 && isActive ? 'background:#475569; color:#f8fafc' : !savedId ? 'color:#94a3b8' : ''}
+            on:click|stopPropagation={() => deleteSample(si)}
+          >
+            {#if cursor === -1 && isActive}
+              <span class="text-xs">▶</span>
+            {:else if !savedId}
+              <span class="text-xs">✓</span>
+            {:else}
+              <span class="text-xs opacity-0">·</span>
+            {/if}
+            <span>🔇 — Kosong —</span>
+          </button>
           {#each GROUPS as group}
             <div class="px-2 py-0.5 text-xs text-slate-700 font-bold tracking-wide uppercase">
               {group}

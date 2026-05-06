@@ -129,6 +129,17 @@
       {/each}
 
       <div class="flex-1 overflow-y-auto min-h-0 py-1" bind:this={sampleListEl}>
+        <!-- Pilihan Kosong -->
+        <button
+          data-idx="-1"
+          class="w-full text-left px-3 py-2 flex items-center gap-2.5 text-xs transition-colors"
+          style={$cursorIdx[$selectedSensor] === -1 ? 'background:#47556922; color:#94a3b8' : 'color:#475569'}
+          on:click={() => { deleteSample($selectedSensor); closePicker(); }}
+        >
+          <span class="w-4 text-center shrink-0">{$cursorIdx[$selectedSensor] === -1 ? '▶' : ' '}</span>
+          <span class="text-sm">🔇</span>
+          <span class="font-medium">— Kosong —</span>
+        </button>
         {#each GROUPS as group}
           <div class="px-3 py-1 text-xs text-slate-700 font-bold tracking-wide uppercase sticky top-0 bg-[#080b12]">
             {group}

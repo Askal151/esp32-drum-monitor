@@ -992,9 +992,20 @@ export function btnNav() {
     const allS    = getAllSamples();
     const ordered = _visualOrder(allS);          // urutan visual mengikut kumpulan
     const cur     = get(cursorIdx)[sensor];
-    const pos     = ordered.indexOf(cur);
-    const nextPos = (pos < 0 || pos >= ordered.length - 1) ? 0 : pos + 1;
-    const nextIdx = ordered[nextPos];
+
+    let nextIdx;
+    if (cur === -1) {
+      // Dari Kosong → kembali ke sample pertama
+      nextIdx = ordered[0] ?? 0;
+    } else {
+      const pos = ordered.indexOf(cur);
+      if (pos < 0 || pos >= ordered.length - 1) {
+        // Dari sample terakhir → Kosong
+        nextIdx = -1;
+      } else {
+        nextIdx = ordered[pos + 1];
+      }
+    }
     cursorIdx.update(arr => { const n = [...arr]; n[sensor] = nextIdx; return n; });
   }
 
@@ -1040,7 +1051,8 @@ export function closePicker() {
 
 // ── Save / Delete ────────────────────────────────────────────────
 export function saveSample(sensorIdx) {
-  const cursor   = get(cursorIdx)[sensorIdx];
+  const cursor = get(cursorIdx)[sensorIdx];
+  if (cursor === -1) { deleteSample(sensorIdx); return; }
   const sampleId = getAllSamples()[cursor]?.id;
   if (!sampleId) return;
   sensorSamples.update(arr => { const n = [...arr]; n[sensorIdx] = sampleId; _persist(n); return n; });
