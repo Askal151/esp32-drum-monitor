@@ -54,18 +54,30 @@ export function stopWavSources(sensorKey) {
 // ── Looping WAV untuk uploaded samples (sensor-triggered) ─────
 const _loopingWavs = new Map(); // sensorKey → { src, gain }
 
-export function startWavLoop(audioBuffer, sensorKey, rate = 1.0) {
+export function startWavLoop(audioBuffer, sensorKey, rate = 1.0, gainMult = 1.0, startTime = 0) {
   stopWavLoop(sensorKey);
   const ac = getCtx();
   const src  = ac.createBufferSource();
   src.buffer = audioBuffer;
   src.loop   = true;
   src.playbackRate.value = Math.max(0.1, Math.min(4.0, rate));
+
+  // Kira loopEnd = tepat 1 bar pada 120 BPM (2.0s dalam masa buffer asal)
+  // Bila playbackRate = masterBpm/120, 1 bar akan habis tepat pada masa yang betul
+  // Ini pastikan loop snap ke bar boundary dan tidak drift
+  const oneBeatAt120 = 0.5;          // 60/120 = 0.5s per beat
+  const oneBarAt120  = oneBeatAt120 * 4; // 2.0s per bar (4 beat)
+  if (audioBuffer.duration >= oneBarAt120) {
+    src.loopStart = 0;
+    src.loopEnd   = oneBarAt120;      // loop tepat 1 bar
+  }
+
   const gain = ac.createGain();
-  gain.gain.value = 1.0;
+  gain.gain.value = gainMult;
   src.connect(gain);
   gain.connect(getMasterOut(ac));
-  src.start();
+  // Mulakan pada startTime (grid boundary) — bukan serta-merta
+  src.start(startTime > 0 ? startTime : 0);
   _loopingWavs.set(sensorKey, { src, gain });
   return src;
 }

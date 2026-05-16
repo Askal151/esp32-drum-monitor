@@ -82,8 +82,9 @@
     const beatId0 = get(sensorSamples)[idx];
     const beat0   = BEAT_DATA[beatId0];
     if (beat0?.isUpload && beat0?.buffer) {
-      const initRate = (_sensorBpm[idx] / 120) * Math.pow(2, (_sensorPitch[idx] || 0) / 12);
-      startWavLoop(beat0.buffer, idx, initRate);
+      const initRate = (get(masterBpm) / 120) * Math.pow(2, (_sensorPitch[idx] || 0) / 12);
+      // Hantar nextNote supaya WAV start tepat pada grid boundary — sama dengan sequencer lain
+      startWavLoop(beat0.buffer, idx, initRate, 2.0, nextNote);
     }
 
     _seqTimers[idx] = setInterval(() => {
@@ -206,29 +207,34 @@
     if (changed) seqActive = [...seqActive];  // hanya bila ada perubahan
   });
 
-  // Update playbackRate WAV loop bila BPM/pitch berubah
+  // Update playbackRate WAV loop bila masterBpm/pitch berubah
   function _updateWavLoopRate(idx) {
     const beatId = get(sensorSamples)[idx];
     const beat   = BEAT_DATA[beatId];
     if (!beat?.isUpload) return;
-    const rate = (_sensorBpm[idx] / 120) * Math.pow(2, (_sensorPitch[idx] || 0) / 12);
+    const rate = (get(masterBpm) / 120) * Math.pow(2, (_sensorPitch[idx] || 0) / 12);
     updateWavLoopRate(idx, rate);
   }
 
+  // Bila masterBpm berubah, kemaskini semua upload loop yang aktif
+  $: { $masterBpm; for (let i = 0; i < 8; i++) _updateWavLoopRate(i); }
+
   // ── BPM control dari potensio + button BPMNAV ────────────────
+  // Pot BPM = master clock — satu nilai BPM untuk semua sensor & sequencer
   $: {
     const { sel, bpm: b } = $bpmCtrl;
-    _sensorBpm[sel] = b;
+    const clamped = Math.max(40, Math.min(220, b));
+    for (let i = 0; i < 8; i++) _sensorBpm[i] = clamped;
     sensorBpm = [..._sensorBpm];
-    _updateWavLoopRate(sel);
+    masterBpm.set(clamped);
   }
 
   function applyBpm(sel, bpm) {
-    const b = Math.max(40, Math.min(200, bpm));
-    _sensorBpm[sel] = b;
+    const b = Math.max(40, Math.min(220, bpm));
+    for (let i = 0; i < 8; i++) _sensorBpm[i] = b;
     sensorBpm = [..._sensorBpm];
     bpmCtrl.set({ sel, bpm: b });
-    _updateWavLoopRate(sel);
+    masterBpm.set(b);
   }
 
   // ── Pitch control dari potensio + button PITCHNAV ─────────────
@@ -430,7 +436,7 @@
   <section class="card p-3 flex flex-col gap-2">
     <!-- BPM control panel — potensio + button BPMNAV / keyboard B [ ] -->
     <div class="flex items-center gap-2 px-1 py-1 rounded-lg bg-slate-900 border border-slate-800">
-      <span class="text-[10px] text-slate-500 shrink-0">🎛 BPM:</span>
+      <span class="text-[10px] text-slate-500 shrink-0">🎛 Master BPM:</span>
       <button
         class="text-[10px] px-2 py-0.5 rounded font-bold border transition-colors shrink-0"
         style="border-color:{CLR[$bpmCtrl.sel]}44; color:{CLR[$bpmCtrl.sel]}; background:{CLR[$bpmCtrl.sel]}15"
