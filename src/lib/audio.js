@@ -60,26 +60,32 @@ export function startWavLoop(audioBuffer, sensorKey, rate = 1.0, gainMult = 1.0,
   const src  = ac.createBufferSource();
   src.buffer = audioBuffer;
   src.loop   = true;
+  // Loop keseluruhan buffer — JANGAN potong dengan loopEnd kerana kita tidak
+  // tahu panjang asal WAV. Biar ia loop semula-jadi, playbackRate sahaja yang kawal tempo.
+  src.loopStart = 0;
+  src.loopEnd   = audioBuffer.duration;
   src.playbackRate.value = Math.max(0.1, Math.min(4.0, rate));
 
-  // Kira loopEnd = tepat 1 bar pada 120 BPM (2.0s dalam masa buffer asal)
-  // Bila playbackRate = masterBpm/120, 1 bar akan habis tepat pada masa yang betul
-  // Ini pastikan loop snap ke bar boundary dan tidak drift
-  const oneBeatAt120 = 0.5;          // 60/120 = 0.5s per beat
-  const oneBarAt120  = oneBeatAt120 * 4; // 2.0s per bar (4 beat)
-  if (audioBuffer.duration >= oneBarAt120) {
-    src.loopStart = 0;
-    src.loopEnd   = oneBarAt120;      // loop tepat 1 bar
-  }
-
   const gain = ac.createGain();
-  gain.gain.value = gainMult;
+  // Fade-in 20ms pada grid boundary — elak "klik" bila WAV mula
+  const t0 = startTime > 0 ? startTime : ac.currentTime;
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(gainMult, t0 + 0.02);
   src.connect(gain);
   gain.connect(getMasterOut(ac));
-  // Mulakan pada startTime (grid boundary) — bukan serta-merta
-  src.start(startTime > 0 ? startTime : 0);
+  src.start(t0);
   _loopingWavs.set(sensorKey, { src, gain });
   return src;
+}
+
+// Tukar gain WAV loop yang sedang berjalan (untuk auto-normalisasi)
+export function setWavLoopGain(sensorKey, gainValue) {
+  const entry = _loopingWavs.get(sensorKey);
+  if (!entry) return;
+  const ac = getCtx();
+  entry.gain.gain.cancelScheduledValues(ac.currentTime);
+  entry.gain.gain.setValueAtTime(entry.gain.gain.value, ac.currentTime);
+  entry.gain.gain.linearRampToValueAtTime(Math.max(0, gainValue), ac.currentTime + 0.05);
 }
 
 export function stopWavLoop(sensorKey) {

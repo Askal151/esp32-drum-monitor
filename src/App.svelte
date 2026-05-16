@@ -12,7 +12,7 @@
   import SampleUpload      from './lib/SampleUpload.svelte';
   import MasterTransport   from './lib/MasterTransport.svelte';
   import { masterBpm, syncToGrid, leaveGrid } from './lib/transport.js';
-  import { unlockAudio, isRunning, getAudioCtx, ensureRunning, stopWavSources, startWavLoop, stopWavLoop, updateWavLoopRate } from './lib/audio.js';
+  import { unlockAudio, isRunning, getAudioCtx, ensureRunning, stopWavSources, startWavLoop, stopWavLoop, updateWavLoopRate, setWavLoopGain } from './lib/audio.js';
   import {
     portState, connected, sensors, packetCount,
     connect, disconnect, sendCmd,
@@ -83,9 +83,11 @@
     const beat0   = BEAT_DATA[beatId0];
     if (beat0?.isUpload && beat0?.buffer) {
       const initRate = (get(masterBpm) / 120) * Math.pow(2, (_sensorPitch[idx] || 0) / 12);
-      // Hantar nextNote supaya WAV start tepat pada grid boundary — sama dengan sequencer lain
-      startWavLoop(beat0.buffer, idx, initRate, 2.0, nextNote);
+      // gainMult 0.8 — elak clip bila beberapa sensor main serentak
+      startWavLoop(beat0.buffer, idx, initRate, 0.8, nextNote);
     }
+    // Auto-normalisasi gain semua WAV loop aktif
+    _normalizeWavGains();
 
     _seqTimers[idx] = setInterval(() => {
       const ac2 = isRunning() ? getAudioCtx() : null;
@@ -103,14 +105,18 @@
 
       const stepDur = 60 / get(masterBpm) / 4;  // guna masterBpm — sama dengan semua sequencer
 
+      // Skala velocity mengikut bilangan sensor aktif — elak clip bila banyak sensor main
+      const activeSeqs = _seqTimers.filter(Boolean).length;
+      const velScale   = activeSeqs > 1 ? 1 / Math.sqrt(activeSeqs) : 1.0;
+
       while (_seqNextTime[idx] < ac2.currentTime + SEQ_LOOKAHEAD) {
         const step = _seqStep[idx];
         const t    = _seqNextTime[idx];
-        const vel  = _manualPlaying[idx]
+        const vel  = (_manualPlaying[idx]
           ? 0.8
           : (s.thresh?.[3] > s.thresh?.[0])
             ? Math.max(0.3, Math.min(1.0, (Math.abs(s.dev) - s.thresh[0]) / (s.thresh[3] - s.thresh[0])))
-            : 0.7;
+            : 0.7) * velScale;
 
         const pitchRate = Math.pow(2, (_sensorPitch[idx] || 0) / 12);
         if (beat.isUpload) {
@@ -139,6 +145,16 @@
     stopWavLoop(idx);
     stopWavSources(idx);
     leaveGrid();
+    // Re-normalisasi gain sensor lain yang masih aktif
+    _normalizeWavGains();
+  }
+
+  // Auto-normalisasi gain WAV loop — skala 1/sqrt(N) supaya N sensor
+  // yang main serentak tidak clip antara satu sama lain
+  function _normalizeWavGains() {
+    const activeCount = _seqTimers.filter(Boolean).length;
+    const g = activeCount > 0 ? Math.min(0.8, 0.8 / Math.sqrt(activeCount)) : 0.8;
+    for (let i = 0; i < 8; i++) setWavLoopGain(i, g);
   }
 
   async function playAll() {
